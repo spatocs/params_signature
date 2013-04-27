@@ -4,23 +4,23 @@ use strict;
 
 use Carp;
 use Params::Signature;
-use Data::Dumper;
 
-my $debug = 0;
+#use Data::Dumper;
+
+my $debug         = 0;
 my $class_default = undef;
-*class_default = sub { ($class_default) ? $class_default : ($class_default = new Params::Signature::Multi(on_fail => \&confess)) };
+*class_default =
+sub { ($class_default) ? $class_default : ($class_default = new Params::Signature::Multi(on_fail => \&confess)) };
 
 sub new
 {
     my $class = shift;
-    my $self = {};
-    my %params = @_;
+    my $self  = {};
 
     bless $self, $class;
 
-    $self->{validator} = new Params::Signature(@_, on_fail => sub { $self->fail(@_) });
-
-    $self->{on_fail} = $params{on_fail};
+    # skip local validation since @_ is validated by Params::Signature::new()
+    $self->validator(new Params::Signature(@_));
 
     return $self;
 }
@@ -29,15 +29,25 @@ sub new
 # NOTE: this is NOT a class method
 sub validator
 {
+
     # $self not set to $class_default so that people don't mess with "system defaults"
     my $self = shift;
     if (scalar @_)
     {
         $self->{validator} = shift;
-        $self->{on_fail} = $self->{validator}->{on_fail};
-        $self->{validator}->{on_fail} = sub {$self->fail(@_)};
+        if (ref($self->{validator}))
+        {
+            $self->{on_fail} = $self->{validator}->{on_fail};
+            $self->{validator}->{on_fail} = sub { $self->fail(@_) };
+        }
     }
     return $self->{validator};
+}
+
+sub validate
+{
+    my $self = (ref($_[0])) ? shift @_ : (shift @_ and class_default());
+    return $self->validator->validate(@_);
 }
 
 # Parameters Needed:
@@ -45,7 +55,7 @@ sub validator
 # list of signatures
 #   signature
 #   sub reference
-# $multi->dispatch(\@_, 
+# $multi->dispatch(\@_,
 #                   [
 #                       { signature => ["Int one", "Str two"], call => &sub_one },
 #                       { signature => ["Str one", "Str two", "Str three"], call => &sub_two },
@@ -59,7 +69,7 @@ sub validator
 #                       ],
 #                   on_fail => \&call_me
 #                   );
-#                 
+#
 #
 # store "prototypes" in a local (package-level) hash
 # ... now both the actual sub and dispatch can easily share the same signature
@@ -67,13 +77,13 @@ sub validator
 # $prototype{'sub_one_b' => ["Str one", "Str two", "Str three"]};
 # $prototype{'method_one_a' => ["Object self", "Str one", "Str two", "Str three"]};
 # $prototype{'method_two_b' => ["Object self", "Str one", "Str two", "Str three"]};
-# $multi->dispatch(\@_, 
+# $multi->dispatch(\@_,
 #                   [
 #                       { signature => $prototype{"sub_one_a"}, call => &sub_one_a },
 #                       { signature => $prototype{"sub_two_b"}, call => &sub_two_b },
 #                   ],
 #                   );
-# $multi->dispatch(\@_, 
+# $multi->dispatch(\@_,
 #                   [
 #                       { signature => $prototype{"method_one_a"}, call => &method_one_a },
 #                       { signature => $prototype{"method_one_b"}, call => &method_one_b },
@@ -86,32 +96,24 @@ sub dispatch
     my $idx;
     my $id;
     my $on_fail;
+    my $params;
 
-    if (scalar @_ == 2)
-    {
-        $params{params} = shift;
-        $params{signatures} = shift;
-    }
-    elsif (scalar @_ == 3)
-    {
-        $params{params} = shift;
-        $params{signatures} = shift;
-        $params{param_style} = shift;
-    }
-    else
-    {
-        %params = @_;
-    }
+    $params = class_default()->validator->validate(
+                                params    => \@_,
+                                signature => ["ArrayRef params", "ArrayRef signatures", "Str param_style?", "CodeRef on_fail?"],
+                                fuzzy     => 1
+                                );
 
-    $on_fail = (defined($params{on_fail})) ? $params{on_fail} : $self->{on_fail};
+    $on_fail = (defined($params->{on_fail})) ? $params->{on_fail} : $self->{on_fail};
 
-    ($idx, $id) = $self->resolve(%params);
+    ($idx, $id) = $self->resolve(%$params);
     if ($self->{ok})
     {
-        print_debug("Resolved to: $idx, $id ...");
-        if (defined($params{signatures}->[$idx]{call}))
+
+        #print_debug("Resolved to: $idx, $id ...");
+        if (defined($params->{signatures}->[$idx]{call}))
         {
-            return $params{signatures}->[$idx]{call}->(@{$params{params}});
+            return $params->{signatures}->[$idx]{call}->(@{$params->{params}});
         }
         else
         {
@@ -122,14 +124,14 @@ sub dispatch
 }
 
 # in scalar context return id (if set) or index (if no id set)
-# in list context, return index and id (undef if not set) 
-# $multi->resolve(\@_, 
+# in list context, return index and id (undef if id not set)
+# $multi->resolve(\@_,
 #                   [
 #                       { signature => ["Int one", "Str two"], id => 'one' },
 #                       { signature => ["Str one", "Str two", "Str three"], id => 'two' },
 #                   ]
 #                   );
-# $multi->resolve(\@_, 
+# $multi->resolve(\@_,
 #                   [
 #                       #implicit id of "0"
 #                       { signature => ["Int one", "Str two"] },
@@ -137,7 +139,7 @@ sub dispatch
 #                       { signature => ["Str one", "Str two", "Str three"] },
 #                   ]
 #                   );
-# $multi->resolve(params => \@_, 
+# $multi->resolve(params => \@_,
 #                 param_style => "positional|named|mixed",
 #                 signatures => [
 #                       #implicit id of "0"
@@ -157,14 +159,14 @@ sub resolve
     my $param;
     my @param_values;
     my $passed = -1;
-    my $id = undef;
+    my $id     = undef;
     my $on_fail;
 
-    print_debug("Params::Signature::Multi::resolve:", Dumper(\@_));
+    #print_debug("Params::Signature::Multi::resolve:", Dumper(\@_));
 
     if (scalar @_ == 2)
     {
-        $params{params} = shift;
+        $params{params}     = shift;
         $params{signatures} = shift;
     }
     else
@@ -174,45 +176,49 @@ sub resolve
 
     $on_fail = (defined($params{on_fail})) ? $params{on_fail} : $self->{on_fail};
 
-    for($i =0; $i < scalar @{$params{signatures}}; $i++)
+    for ($i = 0; $i < scalar @{$params{signatures}}; $i++)
     {
         $params{check_only} = 1;
         $self->{ok} = 1;
+
         # might be faster to 'delete' id and then add back after validate()
-        %validate_params = map { ($_ ne 'id' && $_ ne 'call')  ? ($_, $params{signatures}->[$i]{$_}) : () } keys %{$params{signatures}->[$i]};
+        %validate_params =
+        map { ($_ ne 'id' && $_ ne 'call') ? ($_, $params{signatures}->[$i]{$_}) : () } keys %{$params{signatures}->[$i]};
         $validate_params{params} = $params{params};
-        print_debug("Validate params:", Dumper(\%validate_params));
+
+        #print_debug("Validate params:", Dumper(\%validate_params));
         $param_style = $self->{validator}->validate(%validate_params);
-        print_debug("Validate result: (ok=1) " . $self->{ok}); 
+
+        #print_debug("Validate result: (ok=1) " . $self->{ok});
         if ($self->{ok})
         {
             $passed = $i;
-            $id = $params{signatures}[$i]->{id};
+            $id     = $params{signatures}[$i]->{id};
             last;
         }
     }
 
     if (($passed < 0) && ($on_fail))
     {
-        print_debug("Call on_fail with: Failed to resolve subroutine using parameters and signatures");
+
+        #print_debug("Call on_fail with: Failed to resolve subroutine using parameters and signatures");
         $on_fail->("Failed to resolve subroutine using parameters and signatures");
     }
 
     # list context: index and id are returned
     # scalar context: id, if set, else index
-    return (wantarray ? ($passed, $id) : ($id || $passed)); 
+    return (wantarray ? ($passed, $id) : ($id || $passed));
 }
-
 
 sub fail
 {
     my $self = shift;
-    my $msg = shift;
-    print_debug("Dang it! $msg");
-    $self->{ok} = 0;
+    my $msg  = shift;
+
+    #print_debug("Dang it! $msg");
+    $self->{ok}  = 0;
     $self->{msg} = $msg;
 }
-
 
 sub print_debug
 {
@@ -222,7 +228,39 @@ sub print_debug
     }
 }
 
-1; 
+sub _internal_validate
+{
+    my $self      = shift;
+    my $p_list    = shift;
+    my $validator = shift;
+    my $param;
+    my $value;
+    my %params;
+    my @p;
+    my $on_fail;
+
+    @p = @$p_list;
+
+    $on_fail = (defined($self->{on_fail})) ? $self->{on_fail} : $class_default->{on_fail};
+
+    while (($param, $value) = splice(@p, 0, 2))
+    {
+        if (!defined($validator->{$param}))
+        {
+            $on_fail->("$param: is not a valid parameter");
+        }
+
+        if (!$validator->{$param}->($value))
+        {
+            $on_fail->("$param: '$value' is invalid");
+        }
+
+        $params{$param} = $value;
+    }
+    return %params;
+}
+
+1;
 __END__
 
 =head1 NAME
@@ -242,18 +280,23 @@ our $VERSION = '0.01';
 
     use Params::Signature::Multi;
 
+    use MyClass;
+
     my $prototypes = {
         sub_one_a => ["Int one", "Int two"],
         sub_one_b => ["Int one", "Str two"],
         sub_one_fallback => ["..."],
-        method_two_a => ["Object self", "Int one", "Int two"],
-        method_two_b => ["Object self", "Int one", "Str two"]
-        method_two_fallback => ["Object self", "..."]
+        method_two_a => ["MyClass self", "Int one", "Int two"],
+        method_two_b => ["MyClass self", "Int one", "Str two"]
+        method_two_fallback => ["MyClass self", "..."]
     }:
 
     my $multi = new Params::Signature::Multi();
 
-    # all positional params
+    # register custom class
+    $multi->validator->register_class("MyClass");
+
+    # call "public" subroutine
     sub_one(1,"hi")
 
     sub sub_one
@@ -282,7 +325,10 @@ our $VERSION = '0.01';
         ...
     }
 
-    $self->method_two(1,"hi");
+    $obj = new MyClass();
+
+    # call public method
+    $obj->method_two(1,"hi");
 
     sub method_two
     {
@@ -292,6 +338,21 @@ our $VERSION = '0.01';
                             { signature => $prototypes{method_two_b}, call => \&_method_two_b}
                             { signature => $prototypes{method_two_fallback}, call => \&_method_two_fallback}
                         ]);
+    }
+
+    sub _method_two_a
+    {
+        my $params = $multi->validator->validate(\@_, $prototypes{method_two_a});
+        ...
+    }
+    sub _method_two_b
+    {
+        my $params = $multi->validator->validate(\@_, $prototypes{method_two_b});
+        ...
+    }
+    sub _method_two_fallback
+    {
+        ...
     }
 
     # determine which signature matches and handle the rest locally
@@ -316,18 +377,19 @@ our $VERSION = '0.01';
         {
             return $self->{$_[0]};
         }
-        else # fallback
+        else # $id eq fallback
         {
             shout("You didn't give me a key!");
         }
-
     }
 
 =head1 DESCRIPTION
 
-Many object-oriented languages, including Perl 6, allow you to define multiple methods with the same name but a different subroutine signature.  At run time, the interpreter determines which signature matches the parameters being passed to the method and calls the corresponding method.  Params::Signature::Multi builds on Params::Signature and uses it to select the best matching subroutine and call it accordingly.  Note that Params::Signature::Multi treats everything as a subroutine, since (in perl 5) even methods are actually just subroutines.  
+Many object-oriented languages, including Perl 6, allow you to define multiple methods with the same name but a different subroutine signature.  At run time, the interpreter determines which signature matches the parameters being passed to the method and calls the corresponding method.  This module does not provide a way to define multiple subroutines with the same name nor does it define new keywords.  Instead, one subroutine serves as the public interface to a number of "private" subroutines.  
 
-In its simplest form, you simply call Params::Signature::Multi's L</dispatch> method with your parameters and a list of signature specifications:
+This module works like a dispatch table which is given a list of "private" subroutines and their signatures.  Params::Signature::Multi uses Params::Signature to compare signatures with parameters and select the first matching signature. A private subroutine is called when its signature matches the parameters passed to the public subroutine.  Each private subroutine exists either as a regular subroutine (with its own name) or an anonymous subroutine.  
+
+In its simplest form, you simply call Params::Signature::Multi's L</dispatch> method with the parameters and a list of signature specifications, each of which includes a reference to a subroutine:
 
     return $multi->dispatch(\@_, 
                 [
@@ -337,8 +399,9 @@ In its simplest form, you simply call Params::Signature::Multi's L</dispatch> me
                 ],
                 # default parameter style is 'positional' (or whatever was passed to
                 # '$multi' object's constructor) ...
-                # force parameter style to 'named' 
-                "named"
+                # override default and force parameter style to 'named' 
+                "named",
+                \&my_error_handler
                 );
 
     return $multi->dispatch(
@@ -350,28 +413,28 @@ In its simplest form, you simply call Params::Signature::Multi's L</dispatch> me
                             { signature => ["..."], call => \&call_me_fallback}
                         ],
 
-                    # default parameter style is 'positional' (or whatever was passed to
-                    # '$multi' object's constructor) ...
-                    # force parameter style to 'named' 
-
                     param_style => "named",
                     
                     on_fail => \&my_error_handler
                 );
 
 
-A signature is a list of parameter definitions as defined in L<Params::Signature>.  Note that default values defined in the signature are ignored, and therefore not set, by L</dispatch> or L</resolve>.  These methods check parameter type constraints only.
+A signature is a list of parameter definitions as defined in L<Params::Signature>.  Note that default values defined in the signature are ignored, and therefore not set, by L</dispatch> or L</resolve>.  These methods compare parameters with parameter type constraints only.
 
-The list of signatures is defined in the same order used by L</dispatch> and L</resolve> to evaluate signatures and identify the first matching signature.  The most specific signature should be first with more general signatures following it.  The first signature that matches is considered the "best match", even if subsequent signatures would also match.  A "fallback" signature which accepts anything (via the "..." pseudo-parameter) can be used to handle situations where the the parameters don't match any signature.
+The list of signatures is defined in the same order used by L</dispatch> and L</resolve> to evaluate signatures and identify the first matching signature.  The most specific signature should be first with more general signatures following it.  The first signature that matches is considered the "best match", even if subsequent signatures would also match.  A "fallback" signature which accepts anything (via the "..." pseudo-parameter) can be used to handle situations where the parameters don't match any signature.
+
+The L</resolve> method finds the best matching signature, but does not call a private subroutine.  Instead, it simply determines which signature matches a subroutine's parameters and returns it's identifier.  The subroutine can then use the identifier to respond accordingly.  Using L</resolve> makes sense for subroutines like object getter/setter methods which handle everything locally.
 
 =cut
 
 
 =head1 METHODS
 
-All functionality is implemented via object (or class) methods.  You can use L<dispatch> and L</resolve> as Params::Signature::Multi class methods rather than constructing a module or application-specific Params::Signature::Multi object.
+All functionality is implemented via object (or class) methods.  You can use L</dispatch> and L</resolve> as Params::Signature::Multi class methods rather than constructing a module or application-specific Params::Signature::Multi object.
 
 =head2 new
+
+The "new" method takes the same parameters as those passed to L<Params::Signature>'s "new" method.
 
     new Params::Signature::Multi(
             param_style => "positional",
@@ -381,22 +444,9 @@ All functionality is implemented via object (or class) methods.  You can use L<d
             called => "My::Module"
         );
 
-The "new" method takes the same parameters as those passed to L</Params::Signature>'s "new" method.
-
-
 =cut
 
 =head2 resolve
-
-    my ($idx, $id) = $multi->resolve(
-                    params => \@_, 
-                    signatures => [
-                        { id => "set",  signature => ["Str key", "Str value"]},
-                        { id => "get", signature => ["Str key"], }
-                    ],
-                    param_tyle => "positional"
-                );
-
 
 Only resolve which signature actually matches the parameters passed to a subroutine.
 
@@ -424,18 +474,19 @@ B<Return Value>:
 
 In scalar context, the method returns the index of the signature that was selected.  If the optional "id" value is set in the C<signatures> section, the "id" is returned instead of the index.  In list context, the method returns the index and id.
 
+    my ($idx, $id) = $multi->resolve(
+                    params => \@_, 
+                    signatures => [
+                        { id => "set",  signature => ["Str key", "Str value"]},
+                        { id => "get", signature => ["Str key"], }
+                    ],
+                    param_tyle => "positional"
+                );
+
+
 =cut
 
 =head2 dispatch
-
-    return $multi->dispatch(
-            params => \@_, 
-            signatures => [
-                { signature => ["Int one", "Str two = 'A default value'", "Undef|Str three?], call => \&_call_me},
-                { signature => ["Int one"], call => \&_or_call_me}
-            ],
-            param_tyle => "positional"
-        );
 
 
 Determine which signature matches the parameters in C<params> and call the corresponding subroutine.
@@ -464,6 +515,42 @@ B<Return Value>:
 
 The return value of the subroutine that was called or undef if nothing was called.
 
+    return $multi->dispatch(
+            params => \@_, 
+            signatures => [
+                { signature => ["Int one", "Str two = 'A default value'", "Undef|Str three?], call => \&_call_me},
+                { signature => ["Int one"], call => \&_or_call_me}
+            ],
+            param_tyle => "positional"
+        );
+
+=head2 validator
+
+Either get or set the Params::Signature object used to evaluate signatures.
+
+B<Return Value>:
+
+The current Params::Signature object used to examine signatures.
+
+    my $multi = new Params::Signature::Multi(param_style => "named");
+    $multi->validator(new Params::Signature(fuzzy => 1, param_style => "named"));
+    $multi->validator->register_class("MyClass");
+    $params = $multi->validator->validate(\@_, ["Str name", "Int id"]);
+
+
+=head2 validate
+
+A convenience method to use the C<validator> object to validate the parameters passed to a subroutine.  See the L<Params::Signature> module for more information concerning the validate method.
+
+B<Return Value>:
+
+In list context, validated parameters are returned as a list.  
+In scalar context, the method returns a reference to a hash containing parameters which have a value.  The parameter name is the key.
+
+    my $multi = new Params::Signature::Multi(param_style => "named");
+    $params = $multi->validate(\@_, ["Str name", "Int id"]);
+    @params = $multi->validate(\@_, ["Str name", "Int id"]);
+
 
 =cut
 
@@ -472,18 +559,20 @@ The return value of the subroutine that was called or undef if nothing was calle
 
 A Params::Signature object is used to cache the parsed form of each signature evaluated.  Re-using the same object to evaluate subroutine parameters eliminates the need to parse the signature every time.  Using a Params::Signature::Multi singleton per module or application is recommended for reducing the amount of time it takes to evaluate parameters.
 
+Using a "prototypes" hash to store signatures make it easier to define a signature once and then re-use the same signature throughout a module or application.  This is not a requirement, but may make maintenance a lot easier.  This also means your signature is defined only once rather than on every call.  You can technically use anything to store a reference to the signature, but a hash makes it easy to find a signature.  Of course, that's just an opinion.
+
 
 =head1 LIMITATIONS AND CAVEATS
 
 =head2 Resolution Method
 
-This is a "poor man's" method for supporting multi methods and subroutines.  The current means of selecting the first signature that matches rather than evaluating all of them and picking the "best match" may not be the best approach.  Evaluating signatures in list order has the advantage of giving the programmer some control over the order of evaluation, thus providing predictable results.  This remains a "best effort" and is not intended to emulate more comprehensive systems.
+This is a "poor man's" method for supporting multi methods and subroutines.  The current means of selecting the first signature that matches rather than evaluating all of them and picking the "best match" may not be the best approach.  Evaluating signatures in list order has the advantage of giving the programmer some control over the order of evaluation, which should produce predictable results.  This remains a "best effort" and is not intended to emulate more sophisticated systems.
 
 =head2 Inheritance
 
-Inheritance is not supported directly.  The initial method that gets called is resolved by perl.  Once the method is called, other methods in the method's package are available as values for use with C<call>.  However, there is no easy way to know if a C<call> method has been overriden in a child object.  If you really need proper inheritance and multi-method, you probably should be using Moose with MooseX and not this package.  
+Inheritance is not supported directly.  The initial ("public") method that gets called is resolved by perl.  Once the method is called, other methods in the public method's package are available as values for use with L</dispatch>'s C<call> parameter.  If you only pass references to "private" methods in as values for C<call>, you may not need to worry about a child class overriding a method.  If you C<call> a "public" method, there is no easy way to know if that method has been overriden in a child object.  If you really need proper inheritance and multi-method handling, you may need Moose with MooseX and not this package.  
 
-A possible solution to inheritance:
+A possible solution to inheritance is to wrap the call in an anonymous subroutine which then relies on perl to resolve the method being called:
 
     my $self = shift;
     return $multi->dispatch(
