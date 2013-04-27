@@ -1,1 +1,4 @@
 fckeditor
+tmp
+.gitignore
+*disabled
