@@ -6,7 +6,7 @@ use Test::More;
 
 use Data::Dumper;
 use Try::Tiny;
-use Params::Signature;
+use Params::Signature qw(:all);
 
 my $test_count = 0;
 
@@ -148,7 +148,7 @@ sub process_test_criteria
         $failed_msg = "";
         if ($criteria->{array_answer})
         {
-            @array_answer = Params::Signature->validate($criteria->{args}, $criteria->{signature});
+            @array_answer = validate($criteria->{args}, $criteria->{signature});
             #diag("array_answer:" . Dumper(\@array_answer));
             if (!$failed)
             {
@@ -167,7 +167,7 @@ sub process_test_criteria
         }
         else
         {
-            $answer = Params::Signature->validate($criteria->{args}, $criteria->{signature});
+            $answer = validate($criteria->{args}, $criteria->{signature});
             #diag("answer:" . Dumper($answer));
             if (!$failed)
             {

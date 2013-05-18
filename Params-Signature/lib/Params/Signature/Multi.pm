@@ -1,9 +1,10 @@
 package Params::Signature::Multi;
-use 5.006;
 use strict;
 
 use Carp;
 use Params::Signature;
+
+our $VERSION = '0.02';
 
 #use Data::Dumper;
 
@@ -269,12 +270,9 @@ Params::Signature::Multi - support for subroutine selection and dispatch based o
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =cut
-
-our $VERSION = '0.01';
-
 
 =head1 SYNOPSIS
 

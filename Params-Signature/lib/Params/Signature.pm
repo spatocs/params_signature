@@ -5,25 +5,37 @@ package Params::Signature;
 #    *  test
 #       test in "real" app
 #       if it works, put on CPAN & github
-use 5.006;
+
+# TODO: test 
+#   + exported functions
+#     - update documentation
+#   + coercion 
+#     - update documentation
+#    
 use strict;
 use warnings;
+
+use Exporter;
 
 use Carp;
 use Scalar::Util;
 use Class::Inspector;
 
-#use Data::Dumper;
+our @ISA = qw(Exporter);
+our @EXPORT_OK = qw(validate coerce register_coerce register_type register_class register_role register_can register_regex register_enum type_check);
+our %EXPORT_TAGS = ( register => [qw(register_coerce register_type register_class register_role register_can register_regex register_enum)], 
+    all => [qw(validate coerce register_coerce register_type register_class register_role register_can register_regex register_enum type_check)]
+);
 
-our $VERSION = "0.01";
+our $VERSION = "0.02";
 
 my $OPTIONAL_SYMBOL = "optional:";
 my $CUTOFF_SYMBOL   = "named:";
 my $EXTRA_SYMBOL    = "...";
 
-my $ASSIGN_PARAM_SYMBOL = "<=";
-my $ASSIGN_SYMBOL       = "=";
-my $DEPENDS_SYMBOL      = "<<";
+my $ASSIGN_PARAM_SYMBOL   = "<=";
+my $ASSIGN_SYMBOL         = "=";
+my $DEPENDS_SYMBOL        = "<<";
 
 my $ASSIGN_NONE    = 0;
 my $ASSIGN_PARAM   = 1;
@@ -41,6 +53,13 @@ my $FIELD_SEPARATOR = \0x1c;
 
 my $debug = 0;
 
+if ($debug)
+{
+    # 'use' tucked inside 'eval' so it happens at runtime
+    # otherwise the 'if' doesn't really do what I want
+    eval "use Data::Dumper";
+}
+
 my $class_default = undef;
 
 # singleton for use with class methods
@@ -51,6 +70,7 @@ my $class_default = undef;
                                         new Params::Signature(
                                             param_style => $DEFAULT_PARAM_STYLE,
                                             fuzzy       => 0,
+                                            coerce => 1,
                                             register_builtins => 1,
                                             on_fail           => \&confess,
                                             called => "Params::Signature:"
@@ -65,8 +85,9 @@ my $new_validator = {
     },
     on_fail        => sub { (!defined($_[0]) || ref $_[0] eq "CODE") },
     normalize_keys => sub { (!defined($_[0]) || ref $_[0] eq "CODE") },
-    fuzzy          => sub { 1 },
-    register_builtins => sub { 1 },
+    fuzzy          => sub { ($_[0] == 0      || $_[0] == 1) },
+    coerce         => sub { ($_[0] == 0      || $_[0] == 1) },
+    register_builtins => sub { ($_[0] == 0      || $_[0] == 1) },
     called            => sub { 1 },
     };
 
@@ -98,22 +119,24 @@ sub new
         # on_fail actually exists yet
         $on_fail = \&confess;
     }
+    $params{called} = (defined($params{called})) ? $params{called} : '';
 
     foreach $param (keys %params)
     {
 
-        #print_debug("new: validate $param ($params{$param})");
+        #_print_debug("new: validate $param ($params{$param})");
         if (!defined($new_validator->{$param}) ||
             (!$new_validator->{$param}->($params{$param})))
         {
             $on_fail->("$param: is invalid");
+            return;
         }
         $self->{$param} = $params{$param};
     }
 
-    # execution delayed so that on_fail can be set by caller before we
-    # do something that may fail
-    if (defined($params{register_builtins}))
+    # execution of _register_builtins delayed so that on_fail can be set 
+    # by caller before we do something that may fail
+    if ($params{register_builtins})
     {
 
         # this should only be needed for the class $class_default object
@@ -121,6 +144,180 @@ sub new
     }
 
     return $self;
+}
+
+my $coerce_validator =  {
+                  from  => sub { length($_[0]) },
+                  to    =>  sub { length($_[0]) },
+                  check_only  => sub { defined($_[0]) },
+                  info  => sub { (!defined($_[0]) || (ref($_[0]) eq "HASH")) },
+                  };
+
+
+# coerce $value into a Thingy, My::Class or an Str
+# $sig->coerce("Thingy|My::Class|Str", $value);
+# $sig->coerce("Thingy|My::Class|Str", $value, 0);
+#
+# only check if we can coerce $value into a Thingy, My::Class or an Str
+# $sig->coerce("Thingy|My::Class|Str", $value, 1);
+#
+# if you want info about which type $coerced is, pass in $info
+# (which requires the use of named parameters)
+# $info = {};
+# $coerced = $sig->coerce(
+#                 to => "Thingy|My::Class|Str",
+#                 from => $value,
+#                 check_only => 1,
+#                 info => $info
+#                 );
+sub coerce
+{
+    my $self;
+    my $self_ref = ref($_[0]);  # determine how sub was called (obj,class,sub?)
+    my $from;
+    my $to;
+    my %params;
+    my $on_fail;
+    my $from_type;
+    my $to_type;
+    my $is_from_type;
+    my $is_to_type;
+    my @all_types;
+    my $check_only;
+    my $info;
+
+    #$self = (ref($_[0])) ? shift @_ : (shift @_ and class_default());
+    # CAVEAT: if coercing to a Params::Signature, then NAMED PARAMS
+    #         MUST BE USED
+    $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ : (($_[0] eq "Params::Signature") ? (shift @_ and class_default()) : class_default());
+    $on_fail =
+    (defined($self->{on_fail})) ? $self->{on_fail} : $class_default->{on_fail};
+
+    if (scalar @_ == 2)
+    {
+        $to = shift;
+        $from = shift;
+        $check_only = 0;
+        @_ = (from => $from, to => $to, check_only => $check_only);
+    }
+    elsif (scalar @_ == 3)
+    {
+        $to = shift;
+        $from = shift;
+        $check_only = shift;
+        @_ = (from => $from, to => $to, check_only => $check_only);
+    }
+
+    %params = $self->_internal_validate(\@_, $coerce_validator);
+
+    if (!defined($params{from}))
+    {
+        $on_fail->("Must have 'from' parameter to perform coercion");
+        return;
+    }
+    if (!defined($params{to}))
+    {
+        $on_fail->("Must have 'to' parameter to perform coercion");
+        return;
+    }
+
+    $info = $params{info};
+
+    # can we coerce the value params{from} to one of these types?
+    # TODO: need to identify which types are OK to coerce to and which are not;
+    #       for now, coerce to any type in type_spec
+    @all_types = ($params{to} =~ /\|/) ? split(/\|/, $params{to}) : ($params{to});
+    foreach $to_type (@all_types)
+    {
+        $to = $self->{type}{$to_type};
+        if ($is_to_type = $self->type_check($to_type, $params{from}))
+        {
+            if (ref($info)) { $info->{to} = $to_type; $info->{msg} = "ok"; }
+            return($params{from});
+        }
+
+        foreach $from_type (keys %{$to->{coerce}})
+        {
+            $is_from_type = $self->type_check($from_type, $params{from});
+            if ($is_from_type)
+            {
+                # params{from} is a $from_type that can be
+                # coerced into a $to_type
+                if ($check_only)
+                {
+                    return $to_type;
+                }
+                if (ref($info)) { $info->{to} = $to_type; $info->{msg} = "ok"; }
+                return($to->{coerce}{$from_type}{via}->($params{from}));
+            }
+        }
+    }
+    if (ref($info)) { $info->{msg} = "Cannot coerce to " . $params{to}; }
+
+    return undef;
+}
+
+my $register_coerce_validator =  {
+                  from  => sub { length($_[0]) },
+                  to    =>  sub { length($_[0]) },
+                  via     => sub { (ref $_[0] eq "CODE") },
+                  };
+
+sub register_coerce
+{
+    my $self;
+    my $self_ref = ref($_[0]);  # determine how sub was called (obj,class,sub?)
+    my $from;
+    my $to;
+    my $via;
+    my %params;
+    my $on_fail;
+
+    # this attempts to catch the "one off" situation where 'from'
+    # is set to "Params::Signature" and positional arguments are
+    # used
+    $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ : (($_[0] eq "Params::Signature" && scalar @_ > 3) ? (shift @_ and class_default()) : class_default());
+    $on_fail =
+    (defined($self->{on_fail})) ? $self->{on_fail} : $class_default->{on_fail};
+
+    if (scalar @_ == 3)
+    {
+        $from = shift;
+        $to = shift;
+        $via = shift;
+        @_ = (from => $from, to => $to, via => $via);
+    }
+
+    %params = $self->_internal_validate(\@_, $register_coerce_validator);
+
+    if (!defined($params{from}))
+    {
+        $on_fail->("Must have 'from' parameter to register coercion");
+        return;
+    }
+    if (!defined($params{to}))
+    {
+        $on_fail->("Must have 'to' parameter to register coercion");
+        return;
+    }
+    if (!defined($params{via}))
+    {
+        $on_fail->("Must have 'via' parameter to register coercion");
+        return;
+    }
+
+    if (!defined($self->{type}{$params{from}}))
+    {
+        $on_fail->("Type '$params{from}' is not defined.");
+        return;
+    }
+    if (!defined($self->{type}{$params{to}}))
+    {
+        $on_fail->("Type '$params{to}' is not defined.");
+        return;
+    }
+
+    $self->{type}{$params{to}}{coerce}{$params{from}} = \%params;
 }
 
 # can't use our own validate() because of infinite recursion
@@ -134,6 +331,7 @@ my $register_type_validator = {
 sub register_type
 {
     my $self;
+    my $self_ref = ref($_[0]);  # determine how sub was called (obj,class,sub?)
     my $parent;
     my $child;
     my $inline_as;
@@ -145,18 +343,20 @@ sub register_type
     my %p;
     my %params;
 
-    $self = (ref($_[0])) ? shift @_ : (shift @_ and class_default());
+    #$self = (ref($_[0])) ? shift @_ : (shift @_ and class_default());
+    $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ : (($_[0] eq "Params::Signature") ? (shift @_ and class_default()) : class_default());
     $on_fail =
     (defined($self->{on_fail})) ? $self->{on_fail} : $class_default->{on_fail};
 
     %params = $self->_internal_validate(\@_, $register_type_validator);
 
-    #print_debug("register_type:", Dumper(\%params));
+    #_print_debug("register_type:", Dumper(\%params));
     if (defined($params{parent}) && (!defined($self->{type}{$params{parent}})))
     {
         $on_fail->(
             "Parent type '$params{parent} 'not defined for type '$params{name}'"
             );
+        return;
     }
     elsif (defined($params{parent}))
     {
@@ -166,12 +366,13 @@ sub register_type
     {
         $on_fail->(
                  "A 'where' parameter is not defined for type '$params{name}'");
+        return;
     }
 
     if (defined($params{inline_as}))
     {
 
-        #print_debug("make inline for $params{name}\n");
+        #_print_debug("make inline for $params{name}\n");
         INLINE:
         {
             $inline_as = "(" . $params{inline_as}->() . ")";
@@ -181,7 +382,7 @@ sub register_type
             {
                 $parent = $child->{parent_obj};
 
-                #print_debug("get inline_as fo parent $parent->{name}");
+                #_print_debug("get inline_as fo parent $parent->{name}");
 
                 # detect break in the chain of inline_as; every
                 # parent should have one otherwise, the where subs
@@ -191,7 +392,7 @@ sub register_type
                     defined($parent->{parent_obj}->{inline_as}))
                 {
 
-                    #print_debug("break in the chain!\n");
+                    #_print_debug("break in the chain!\n");
                     $inline_as = undef;
                     last INLINE;
                 }
@@ -199,10 +400,10 @@ sub register_type
                 "(" . $parent->{inline_as}->() . ") && " . $inline_as;
             }
 
-            #print_debug("$params{name} inline_as: $inline_as");
+            #_print_debug("$params{name} inline_as: $inline_as");
             $params{inline_sub} = eval("sub {$inline_as}; ");
 
-            #print_debug("inline_sub is: " . ref($params{inline_sub}));
+            #_print_debug("inline_sub is: " . ref($params{inline_sub}));
         }
     }
 
@@ -224,9 +425,18 @@ my $register_class_validator = {
 
 sub register_class
 {
-    my $self = (ref($_[0])) ? shift @_ : class_default();
+    my $self;
+    my $self_ref = ref($_[0]);  # determine how sub was called (obj,class,sub?)
     my %params;
     my $class_name;
+
+    # determining self differs from other methods because we
+    # need to catch "one off" situation when "Params::Signature" is 
+    # the actual class being registered
+    # this won't work with inheritance:
+    #   $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ : (($_[0] eq "Params::Signature" && scalar @_ > 1) ? (shift @_ and class_default()) : class_default());
+    # ... but not sure inheritance is really a legit concern
+    $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ : ((scalar @_ > 1) ? (shift @_ and class_default()) : class_default());
 
     if (scalar @_ == 1)
     {
@@ -251,9 +461,15 @@ my $register_role_validator = {
 
 sub register_role
 {
-    my $self = (ref($_[0])) ? shift @_ : class_default();
+    my $self;
+    my $self_ref = ref($_[0]);  # determine how sub was called (obj,class,sub?)
     my %params;
     my $role_name;
+
+    # determining self differs from other methods because we
+    # need to catch "one off" situation when "Params::Signature" is 
+    # the actual role being registered
+    $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ : ((scalar @_ > 1) ? (shift @_ and class_default()) : class_default());
 
     if (scalar @_ == 1)
     {
@@ -264,7 +480,7 @@ sub register_role
     %params = $self->_internal_validate(\@_, $register_role_validator);
     $role_name = $params{name};
 
-    #print_debug("register_role", %params);
+    #_print_debug("register_role", %params);
     $self->register_type(
                          name      => $role_name,
                          parent    => "Object",
@@ -280,10 +496,13 @@ my $register_can_validator = {
 
 sub register_can
 {
-    my $self = (ref($_[0])) ? shift @_ : class_default();
+    my $self;
+    my $self_ref = ref($_[0]);  # determine how sub was called (obj,class,sub?)
     my %params;
     my $can_name;
     my $method_name;
+
+    $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ : (($_[0] eq "Params::Signature") ? (shift @_ and class_default()) : class_default());
 
     if (scalar @_ == 2)
     {
@@ -295,7 +514,7 @@ sub register_can
     %params = $self->_internal_validate(\@_, $register_can_validator);
     $can_name = $params{name};
 
-    #print_debug("register_can", %params);
+    #_print_debug("register_can", %params);
     $self->register_type(
         name      => $can_name,
         parent    => "Object",
@@ -314,10 +533,13 @@ my $register_regex_validator = {
 
 sub register_regex
 {
-    my $self = (ref($_[0])) ? shift @_ : class_default();
+    my $self;
+    my $self_ref = ref($_[0]);  # determine how sub was called (obj,class,sub?)
     my %params;
     my $regex_name;
     my $pattern;
+
+    $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ : (($_[0] eq "Params::Signature") ? (shift @_ and class_default()) : class_default());
 
     if (scalar @_ == 2)
     {
@@ -329,7 +551,7 @@ sub register_regex
     %params = $self->_internal_validate(\@_, $register_regex_validator);
     $regex_name = $params{name};
 
-    #print_debug("register_regex", %params);
+    #_print_debug("register_regex", %params);
     $self->register_type(
                      name   => $regex_name,
                      parent => "Str",
@@ -348,11 +570,14 @@ my $register_enum_validator = {
 
 sub register_enum
 {
-    my $self = (ref($_[0])) ? shift @_ : class_default();
+    my $self;
+    my $self_ref = ref($_[0]);  # determine how sub was called (obj,class,sub?)
     my %params;
     my $enum_name;
     my @enum;
     my $enum_regex;
+
+    $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ : (($_[0] eq "Params::Signature") ? (shift @_ and class_default()) : class_default());
 
     # using named parameters
     if (($_[0] eq "name" || $_[0] eq "enum") &&
@@ -392,7 +617,7 @@ sub register_enum
     %params = $self->_internal_validate(\@_, $register_enum_validator);
     $enum_name = $params{name};
 
-    #print_debug("register_enum", %params);
+    #_print_debug("register_enum", %params);
     $self->register_type(
                         name   => $enum_name,
                         parent => undef,
@@ -580,6 +805,7 @@ my $type_check_validator = {
 sub type_check
 {
     my $self;
+    my $self_ref = ref($_[0]);  # determine how sub was called (obj,class,sub?)
     my $type_spec;
     my $value;
     my @all_types;
@@ -588,7 +814,7 @@ sub type_check
     my $check_in;
     my %params;
 
-    $self = (ref($_[0])) ? shift @_ : class_default();
+    $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ : (($_[0] eq "Params::Signature") ? (shift @_ and class_default()) : class_default());
 
     # basic support for positional parameters
     if (scalar @_ == 2)
@@ -607,7 +833,7 @@ sub type_check
 
         # look in self if type is defined, otherwise check in
         # global type definitions
-        #print_debug("type_check: $type($value)");
+        #_print_debug("type_check: $type($value)");
         #<<<
         $check_in = (defined($self->{type}{$type})) ?
                     $self :
@@ -634,7 +860,7 @@ sub _type_check_via_where
     my $check_in;
     my $where_sub;
 
-    #print_debug("_type_check_via_where: $type_spec => $value");
+    #_print_debug("_type_check_via_where: $type_spec => $value");
     @all_types = ($type_spec =~ /\|/) ? split(/\|/, $type_spec) : ($type_spec);
 
     # check object for object-specific types
@@ -691,7 +917,7 @@ sub _build_signature_info
         ($type, $name, $indicator, $indicator_value) =
         split(/\s+/, $arg, $ARG_MAX);
 
-        #print_debug("Process arg: ", "arg: $arg", "type: $type", "name: $name", "indicator: $indicator", "indicator_value: $indicator_value");
+        #_print_debug("Process arg: ", "arg: $arg", "type: $type", "name: $name", "indicator: $indicator", "indicator_value: $indicator_value");
         $idx++;
         $spec->{type}            = $type;
         $spec->{idx}             = $idx;
@@ -701,7 +927,7 @@ sub _build_signature_info
         if ($type eq $CUTOFF_SYMBOL)
         {
 
-            #print_debug("is cutoff");
+            #_print_debug("is cutoff");
             $signature_info{positional_cutoff} = $idx;
             $idx--;
             next;
@@ -709,7 +935,7 @@ sub _build_signature_info
         elsif ($type eq $EXTRA_SYMBOL)
         {
 
-            #print_debug("is extra");
+            #_print_debug("is extra");
             $signature_info{extra_cutoff} = $idx;
             $idx--;
             next;
@@ -772,7 +998,7 @@ sub _build_signature_info
         }
         $spec->{name} = $name;
 
-        #print_debug("Normal arg: $name");
+        #_print_debug("Normal arg: $name");
 
         if (defined($indicator))
         {
@@ -781,7 +1007,7 @@ sub _build_signature_info
                 if ($indicator_value =~ /[\&\{\[]/)
                 {
 
-                    #print_debug("Assign sub for default: $indicator_value");
+                    #_print_debug("Assign sub for default: $indicator_value");
                     $spec->{default_type} = $ASSIGN_SUB;
                     $spec->{default}      = eval "sub { $indicator_value }";
 
@@ -789,7 +1015,7 @@ sub _build_signature_info
                 else
                 {
 
-                    #print_debug("Assign literal for default: $indicator_value");
+                    #_print_debug("Assign literal for default: $indicator_value");
                     $spec->{default_type} = $ASSIGN_LITERAL;
                     $spec->{default}      = eval "$indicator_value;";
                 }
@@ -797,7 +1023,7 @@ sub _build_signature_info
             elsif ($indicator eq $ASSIGN_PARAM_SYMBOL)
             {
 
-                #print_debug("Assign param for default: $indicator_value");
+                #_print_debug("Assign param for default: $indicator_value");
                 $spec->{default_type} = $ASSIGN_PARAM;
                 $spec->{default}      = $indicator_value;
                 if (!defined($signature_info{map}{$indicator_value}))
@@ -830,7 +1056,7 @@ sub _build_signature_info
                     last;
                 }
 
-                #print_debug("Configure dependency: $indicator_value");
+                #_print_debug("Configure dependency: $indicator_value");
             }
             elsif (length($indicator))
             {
@@ -881,7 +1107,7 @@ sub _build_signature_info
         }
     }
 
-    #print_debug("done: sub _build_signature_info");
+    #_print_debug("done: sub _build_signature_info");
     return (\%signature_info, $ok, $msg);
 }
 
@@ -894,6 +1120,8 @@ sub _build_signature_info
 #        stack_skip => [0-9],   # not actually implemented
 #        allow_extra => [0|1],  # deprecated ... use "..." in signature
 #        fuzzy => [0|1],
+#        # check if params match signature, don't assign default values
+#        # used by Params::Signature::Multi to find a matching method
 #        check_only => [0|1],
 #        called => "msg",
 #        callbacks => { field => { cb_name => sub{} }
@@ -907,6 +1135,7 @@ my $validate_validator = {
     on_fail        => sub { (ref($_[0]) eq "CODE") },
     normalize_keys => sub { (!defined($_[0]) || ref $_[0] eq "CODE") },
     fuzzy          => sub { ($_[0] == 0      || $_[0] == 1) },
+    coerce         => sub { ($_[0] == 0      || $_[0] == 1) },
     check_only     => sub { ($_[0] == 0      || $_[0] == 1) },
     called         => sub { (defined($_[0])) },
     callbacks => sub { (ref($_[0]) eq "HASH") },
@@ -919,11 +1148,12 @@ my $validate_validator = {
 sub validate
 {
 
-    #print_debug("start: sub validate", Dumper(\@_));
+    #_print_debug("start: sub validate", Dumper(\@_));
     # param_style is left out of @validate_params on purpose
     my @validate_params =
-    qw(signature params normalize_keys fuzzy on_fail called callbacks);
-    my $self = (ref($_[0])) ? shift @_ : (shift @_ and class_default());
+    qw(signature params normalize_keys coerce fuzzy on_fail called callbacks);
+    my $self;
+    my $self_ref = ref($_[0]);  # determine how sub was called (obj,class,sub?)
     my %params;                 # parameters passed to validate()
     my $param;                  # reference to a parameter in %params
     my @local_caller_params;    # local copy of caller's params
@@ -939,6 +1169,7 @@ sub validate
     my $max = 0;
     my $signature_spec;
     my $signature_info;
+    my $coerce         = 0;
     my $on_fail        = undef;
     my $fuzzy          = 0;
     my $called         = undef;
@@ -953,30 +1184,34 @@ sub validate
     my $param_style = undef;
     my $check_only  = 0;
 
+    #_print_debug("\@_ has " . scalar @_ );
+    #_print_debug("\@_ is " . Dumper(\@_ ));
+    #_print_debug("ref(_[0]) is " . self_ref);
+    $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ : (($_[0] eq "Params::Signature") ? (shift @_ and class_default()) : class_default());
+
     if (!defined($class_default))
     {
         class_default();
     }
 
-    #print_debug("\$class_default:", Dumper($class_default));
-    #print_debug("class_default():", Dumper(class_default()));
+    #_print_debug("\$class_default:", Dumper($class_default));
+    #_print_debug("class_default():", Dumper(class_default()));
 
     # configuration options
 
     # given just the params and signature
-    #print_debug("\@_ has " . scalar @_ );
     if (scalar @_ == 2)
     {
 
-        #print_debug("Assign 0 and 1 to params and signature");
+        #_print_debug("Assign 0 and 1 to params and signature");
         my $caller_params = shift;
         my $signature     = shift;
         @_ = (params => $caller_params, signature => $signature);
     }
+    #_print_debug("\@_ is now " . Dumper(\@_ ));
     %params = $self->_internal_validate(\@_, $validate_validator);
 
-    #print_debug("validate: \$self=", Dumper($self));
-    #print_debug("validate params:", Dumper(\%params));
+    #_print_debug("validate params:", Dumper(\%params));
 
     # check for validation defaults
     foreach $param (@validate_params)
@@ -984,17 +1219,18 @@ sub validate
         if (!$params{$param})
         {
 
-            #(defined($self->{$param})) ? print_debug("using \$self->$param") : print_debug("using class->$param");
+            #(defined($self->{$param})) ? _print_debug("using \$self->$param") : _print_debug("using class->$param");
             $params{$param} =
             (defined($self->{$param})) ? $self->{$param} :
                                          $class_default->{$param};
 
-            #print_debug ("Assign $param default value: $params{$param}");
+            #_print_debug ("Assign $param default value: $params{$param}");
         }
     }
 
     $on_fail        = $params{on_fail};
     $fuzzy          = $params{fuzzy};
+    $coerce         = $params{coerce};
     $called         = $params{called};
     $normalize_keys = $params{normalize_keys};
     $check_only     = $params{check_only};
@@ -1002,7 +1238,7 @@ sub validate
     if (!defined($params{params}))
     {
 
-        #print_debug("$called Missing the list of parameters to validate");
+        #_print_debug("$called Missing the list of parameters to validate");
         $on_fail->("$called Missing the list of parameters to validate");
         return;
     }
@@ -1010,7 +1246,7 @@ sub validate
     if (ref($params{params}) ne "ARRAY")
     {
 
-        #print_debug("$called The list of parameters to validate is not an array reference, it's a " . ref($params{params}));
+        #_print_debug("$called The list of parameters to validate is not an array reference, it's a " . ref($params{params}));
         $on_fail->(
             "$called The list of parameters to validate is not an array reference, it's a "
             . ref($params{params}));
@@ -1033,7 +1269,7 @@ sub validate
         return;
     }
 
-    #print_debug("Signature info", Dumper($signature_info));
+    #_print_debug("Signature info", Dumper($signature_info));
 
     $signature_spec        = $signature_info->{signature_spec};
     $signature_param_count = scalar @{$signature_spec};
@@ -1056,7 +1292,7 @@ sub validate
         return;
     }
 
-    #print_debug("Param style: $param_style");
+    #_print_debug("Param style: $param_style");
 
     # NOTE: if a positional_cutoff exists, the signature has already been
     #       checked in _build_signature_info for proper required/optional ordering,
@@ -1115,7 +1351,8 @@ sub validate
                                      set_values      => \%return_hash,
                                      callbacks       => $params{callbacks},
                                      original_values => $caller_params,
-                                     check_only      => $check_only
+                                     check_only      => $check_only,
+                                     coerce      => $coerce
                                      );
             }
             if (!$ok)
@@ -1124,7 +1361,7 @@ sub validate
                 return;
             }
 
-            #print_debug("idx: $idx");
+            #_print_debug("idx: $idx");
 
             $return_list[$idx] = $value;
             $return_hash{$param} = $value;
@@ -1149,7 +1386,8 @@ sub validate
                                          set_values      => \%return_hash,
                                          callbacks       => $params{callbacks},
                                          original_values => $caller_params,
-                                         check_only      => $check_only
+                                         check_only      => $check_only,
+                                         coerce      => $coerce
                                          );
                         if (!$ok)
                         {
@@ -1176,7 +1414,7 @@ sub validate
             $on_fail->("$called $count required fields missing");
         }
 
-        #print_debug("idx: $idx, extra_cutoff: $extra_cutoff");
+        #_print_debug("idx: $idx, extra_cutoff: $extra_cutoff");
         # if we are at extra cutoff, stick remaining args in return value;
         # not sure how to add extra *positional* params to return_hash;
         # what should I use as a key? extra parameters should probably
@@ -1200,22 +1438,22 @@ sub validate
         }
     }
 
-    #print_debug("return_list: ", Dumper(\@return_list), "", "return_hash: ", Dumper(\%return_hash));
-    #print_debug("remaining params: " . Dumper(\@{params{params}}));
-    #print_debug("param_style: $param_style, param_left: $param_left, param_count: $param_count, idx: $idx");
+    #_print_debug("return_list: ", Dumper(\@return_list), "", "return_hash: ", Dumper(\%return_hash));
+    #_print_debug("remaining params: " . Dumper(\@{params{params}}));
+    #_print_debug("param_style: $param_style, param_left: $param_left, param_count: $param_count, idx: $idx");
 
     # handle remaining (named) arguments
     if (($param_style eq $NAMED) || ($param_style eq $MIXED))
     {
         $param_left = $param_count - $idx;
 
-        #print_debug("param_left: $param_left, param_count: $param_count, idx: $idx");
+        #_print_debug("param_left: $param_left, param_count: $param_count, idx: $idx");
 
         if ((scalar @{$params{params}} == 1) &&
             (ref($params{params}[0]) eq "HASH"))
         {
 
-            #print_debug("convert hash to params");
+            #_print_debug("convert hash to params");
             # turn hash into array, for while loop below
             my @named_params = ();
             map { push(@named_params, $_, $params{params}[0]{$_}) }
@@ -1225,7 +1463,7 @@ sub validate
             $param_left     = $param_count;
             $idx            = 0;
 
-            #print_debug("new named params: " . Dumper(\@{params{params}}));
+            #_print_debug("new named params: " . Dumper(\@{params{params}}));
         }
 
         if (!$extra_cutoff &&
@@ -1244,7 +1482,7 @@ sub validate
 
             # must normalize keys here because signature contains
             # canonical parameter name; the two must match
-            #print_debug("normalize param: $param");
+            #_print_debug("normalize param: $param");
             $param = ($normalize_keys) ? $normalize_keys->($param) : $param;
 
             # get name in case $param is an alias
@@ -1253,8 +1491,8 @@ sub validate
             $signature_info->{map}{$param}{name} :
             $param;
 
-            #print_debug("final param name: $param");
-            #print_debug("value: $value");
+            #_print_debug("final param name: $param");
+            #_print_debug("value: $value");
 
             if (!$extra_cutoff || $idx < $extra_cutoff)
             {
@@ -1274,7 +1512,8 @@ sub validate
                                      set_values      => \%return_hash,
                                      callbacks       => $params{callbacks},
                                      original_values => $caller_params,
-                                     check_only      => $check_only
+                                     check_only      => $check_only,
+                                     coerce      => $coerce
                                      );
                 if (!$ok)
                 {
@@ -1291,7 +1530,7 @@ sub validate
                 }
             }
 
-            #print_debug("idx: $idx, extra_cutoff: $extra_cutoff");
+            #_print_debug("idx: $idx, extra_cutoff: $extra_cutoff");
             if (($extra_cutoff) &&
                 ($idx + 1 == $extra_cutoff) &&
                 ((scalar @{$params{params}} % 2) != 0))
@@ -1325,7 +1564,7 @@ sub validate
             $return_hash{$param} = $value;
         }
 
-        #print_debug("idx: $idx, extra_cutoff: $extra_cutoff");
+        #_print_debug("idx: $idx, extra_cutoff: $extra_cutoff");
     }
 
     # confirm we have all of the required, named parameters
@@ -1336,7 +1575,7 @@ sub validate
         {
 
             #$on_fail->("$called Required parameter '$param' is not present");
-            #print_debug("Required parameter '$param' is not present");
+            #_print_debug("Required parameter '$param' is not present");
             ($value, $ok, $msg) =
             $self->_validate_arg(
                                  value      => undef,
@@ -1345,7 +1584,8 @@ sub validate
                                  set_values => \%return_hash,
                                  callbacks  => $params{callbacks},
                                  original_values => $caller_params,
-                                 check_only      => $check_only
+                                 check_only      => $check_only,
+                                 coerce      => $coerce
                                  );
             if (!$ok)
             {
@@ -1364,9 +1604,9 @@ sub validate
         }
     }
 
-    #print_debug("return_list:", Dumper(\@return_list));
-    #print_debug("return_hash:", Dumper(\%return_hash));
-    #print_debug("done: validate");
+    #_print_debug("return_list:", Dumper(\@return_list));
+    #_print_debug("return_hash:", Dumper(\%return_hash));
+    #_print_debug("done: validate");
     (wantarray ? @return_list : \%return_hash);
 }
 
@@ -1374,7 +1614,8 @@ sub validate
 # parameters will have been checked in the caller
 sub _validate_arg
 {
-    my $self   = (ref($_[0])) ? shift @_ : class_default();
+    #my $self   = (ref($_[0])) ? shift @_ : class_default();
+    my $self   = shift;
     my %params = @_;
     my $ok     = 1;
     my $msg    = undef;
@@ -1388,9 +1629,10 @@ sub _validate_arg
     my $original_values = $params{original_values};
     my $callbacks       = $params{callbacks};
     my $check_only      = $params{check_only};
+    my $coerce          = $params{coerce};
     my $cbs;
 
-    #print_debug("validate_arg:", %params);
+    #_print_debug("validate_arg:", %params);
 
     # if no value, assign default value
     if (!defined($value) && !$check_only && defined($spec->{default_type}))
@@ -1412,6 +1654,10 @@ sub _validate_arg
 
     # check value type
     $ok = $self->type_check($spec->{type}, $value);
+    if ((!$ok) && ($coerce))
+    {
+        $ok = $self->coerce($spec->{type}, $value, $check_only);
+    }
     if (!$ok)
     {
         $value = (defined($value)) ? $value : "undef";
@@ -1424,11 +1670,11 @@ sub _validate_arg
         # run callbacks
         $cbs = $callbacks->{$spec->{name}};
 
-        #print_debug("Callbacks for $spec->{name}:", Dumper($cbs));
+        #_print_debug("Callbacks for $spec->{name}:", Dumper($cbs));
         foreach my $c (keys(%{$cbs}))
         {
 
-            #print_debug("Callback for $spec->{name}:", Dumper($c));
+            #_print_debug("Callback for $spec->{name}:", Dumper($c));
             $ok = $cbs->{$c}->($value, $original_values, $set_values);
             if (!$ok)
             {
@@ -1472,13 +1718,13 @@ sub _get_signature_info
         if (defined($self->{cache}{$cache_key}))
         {
 
-            #print_debug("Use cache key: $cache_key");
+            #_print_debug("Use cache key: $cache_key");
             $signature_info = $self->{cache}{$cache_key};
         }
         else
         {
 
-            #print_debug("Make signature_info for new cache key: $cache_key");
+            #_print_debug("Make signature_info for new cache key: $cache_key");
             # generate spec for each argument defined in signature
             ($signature_info, $ok, $msg) =
             $self->_build_signature_info($params{signature});
@@ -1509,7 +1755,7 @@ sub _get_param_style
     my $ok  = 1;
     my $msg = "";
 
-    #print_debug("get_param_style");
+    #_print_debug("get_param_style");
 
     if (scalar @_ == 5)
     {
@@ -1524,11 +1770,11 @@ sub _get_param_style
         %params = @_;
     }
 
-    #print_debug(Dumper(\%params));
+    #_print_debug(Dumper(\%params));
     $fuzzy          = $params{fuzzy};
     $normalize_keys = $params{normalize_keys};
 
-    #print_debug("fuzzy=$fuzzy");
+    #_print_debug("fuzzy=$fuzzy");
 
     if (!(defined($params{params})) ||
         !(defined($params{signature_info})))
@@ -1547,18 +1793,18 @@ sub _get_param_style
         $extra_cutoff          = $signature_info->{extra_cutoff};
         $required_count        = scalar(keys %{$signature_info->{required}});
 
-        #print_debug("fuzzy = $fuzzy");
-        #print_debug("param_count = $param_count");
-        #print_debug("required_count = $required_count");
-        #print_debug("extra_cutoff = $extra_cutoff");
-        #print_debug("positional_cutoff = $positional_cutoff");
-        #print_debug("signature_param_count = $signature_param_count");
+        #_print_debug("fuzzy = $fuzzy");
+        #_print_debug("param_count = $param_count");
+        #_print_debug("required_count = $required_count");
+        #_print_debug("extra_cutoff = $extra_cutoff");
+        #_print_debug("positional_cutoff = $positional_cutoff");
+        #_print_debug("signature_param_count = $signature_param_count");
 
         # param_style actually passed in overrides all other considerations
         if ($params{param_style})
         {
 
-            #print_debug("param_style passed in with params");
+            #_print_debug("param_style passed in with params");
             # allow for regex that matches a key:
             # pos, name, mix, p, n, m, etc.
             ($param_style) =
@@ -1599,7 +1845,7 @@ sub _get_param_style
         )
         {
 
-            #print_debug("1 HASH with one named param in hash");
+            #_print_debug("1 HASH with one named param in hash");
             # we have one (possibly optional) parameter, and we've
             # been given just one hash which has a key that matches the
             # parameter name we're expecting to see ...
@@ -1636,7 +1882,7 @@ sub _get_param_style
         )
         {
 
-            #print_debug("1 HASH param with multiple params");
+            #_print_debug("1 HASH param with multiple params");
             # we should have more than one parameter, but we've
             # been given just one hash which has keys that match
             # the names of the required parameters we're expecting to see ...
@@ -1665,7 +1911,7 @@ sub _get_param_style
         )
         {
 
-            #print_debug("all $required_count required param present in array");
+            #_print_debug("all $required_count required param present in array");
             # if we have all of the required fields in the proper
             # index position of the array, it looks like a hash
             # or valid argument list we can work with
@@ -1692,7 +1938,7 @@ sub _get_param_style
         )
         {
 
-            #print_debug("all optional params, some present in ARRAY");
+            #_print_debug("all optional params, some present in ARRAY");
             $param_style = $NAMED;
         }
         elsif (
@@ -1710,7 +1956,7 @@ sub _get_param_style
         )
         {
 
-            #print_debug("1 HASH param with multiple optional params");
+            #_print_debug("1 HASH param with multiple optional params");
             # signature has more than one optional parameters, but we've
             # been given just one hash which has keys that match
             # the names of some optional parameters we're expecting to see ...
@@ -1729,7 +1975,7 @@ sub _get_param_style
         elsif ($fuzzy && ($signature_param_count == $param_count))
         {
 
-            #print_debug("signature_param_count == param_count");
+            #_print_debug("signature_param_count == param_count");
             # it appears every parameter is present and we
             # have no other clues to indicate which parameter style
             # to use
@@ -1738,7 +1984,7 @@ sub _get_param_style
         elsif ($fuzzy && ($required_count == $param_count))
         {
 
-            #print_debug("required_count == param_count");
+            #_print_debug("required_count == param_count");
             # it appears every required parameter is present and we
             # have no other clues to indicate which parameter style
             # to use
@@ -1750,14 +1996,14 @@ sub _get_param_style
             # nothing explicit about the param style to use,
             # fuzzy is disabled or failed to figure it out,
             # so use the default
-            #(defined($self->{param_style})) ? #print_debug("using \$self->{param_style}") : #print_debug("using \$class_default->{param_style}");
+            #(defined($self->{param_style})) ? #_print_debug("using \$self->{param_style}") : #_print_debug("using \$class_default->{param_style}");
             $param_style =
             (defined($self->{param_style})) ? $self->{param_style} :
                                               $class_default->{param_style};
         }
     }
 
-    #print_debug("Param style: $param_style");
+    #_print_debug("Param style: $param_style");
 
     return (wantarray ? ($param_style, $ok, $msg) : $param_style);
 }
@@ -1779,7 +2025,7 @@ sub _has_required_named_params
         $params = [%$params];
     }
 
-    #print_debug("has_required_named_params:", Dumper($params), Dumper($req), Dumper($normalize));
+    #_print_debug("has_required_named_params:", Dumper($params), Dumper($req), Dumper($normalize));
 
     #<<<
     for ($i = 0, $match_count = 0;
@@ -1797,7 +2043,7 @@ sub _has_required_named_params
         $matched = 1;
     }
 
-    #print_debug("match=$match_count, pass=$pass_count\n");
+    #_print_debug("match=$match_count, pass=$pass_count\n");
     return $match_count == $pass_count;
 }
 
@@ -1826,7 +2072,7 @@ sub _has_enough_named_params
         $max_possible = scalar(keys %$map);
     }
 
-    #print_debug("has_enough_named_params:", Dumper($params), Dumper($map), Dumper($normalize));
+    #_print_debug("has_enough_named_params:", Dumper($params), Dumper($map), Dumper($normalize));
 
     #<<<
     for ($i = 0, $match_count = 0;
@@ -1848,7 +2094,7 @@ sub _has_enough_named_params
         $matched = 1;
     }
 
-    #print_debug("failed=$failed, match=$match_count, max_possible=$max_possible\n");
+    #_print_debug("failed=$failed, match=$match_count, max_possible=$max_possible\n");
     return (!$failed);
 }
 
@@ -1870,7 +2116,7 @@ sub _has_a_named_param
         $params = [%$params];
     }
 
-    #print_debug("has_a_named_param:", Dumper($params), Dumper($map), Dumper($normalize));
+    #_print_debug("has_a_named_param:", Dumper($params), Dumper($map), Dumper($normalize));
 
     #<<<
     for ($i = 0, $match_count = 0;
@@ -1887,7 +2133,7 @@ sub _has_a_named_param
         $matched = 1;
     }
 
-    #print_debug("match_count=$match_count, pass_count=$pass_count\n");
+    #_print_debug("match_count=$match_count, pass_count=$pass_count\n");
     return $match_count == $pass_count;
 }
 
@@ -1913,11 +2159,13 @@ sub _internal_validate
         if (!defined($validator->{$param}))
         {
             $on_fail->("$param: is not a valid parameter");
+            return;
         }
 
         if (!$validator->{$param}->($value))
         {
-            $on_fail->("$param: '$value' is invalid");
+            $on_fail->("$param: value is invalid");
+            return;
         }
 
         $params{$param} = $value;
@@ -1925,12 +2173,20 @@ sub _internal_validate
     return %params;
 }
 
-sub print_debug
+sub _print_debug
 {
     if ($debug)
     {
         print STDERR join("\n", @_, "\n");
     }
+}
+
+# used to reset class_default during tests;
+# should not be used in applications
+sub _change_class_default
+{
+    my $class = shift;
+    $class_default = shift;
 }
 
 1;
@@ -1951,9 +2207,31 @@ our $VERSION = '0.01';
 
 =head1 SYNOPSIS
 
+    ##############################
+    # Using imported subroutines
+    use Params::Signature qw(:all);
+
+    # register new types to extend default type constraint system
+    register_class("Foo::Bar");
+    register_role("DoesIt");
+    register_enum("1_2_or_3", [1, 2, 3]);
+
+    my $params_hashref = validate(\@_, ["DoesIt doit", "HashRef is_a_bar"])
+
+    # to magically coerce a hash into a Foo::Bar via validate()
+    register_coerce("HashRef", "Foo::Bar", sub { new Foo::Bar(%{$_[0]})});
+
+    # if x is a HashRef in @_ it will be a Foo::Bar
+    # in @params_array
+    my @params_array = validate(\@_, ["1_2_or_3 number", "Foo::Bar x"])
+
+
+    ##############################
+    # Using Object-Oriented Interface
+    # ... show off advanced features
     use Params::Signature;
 
-    # - POSITIONAL PARAMETER STYLE -
+    # -- positional parameter style --
     # parameters are passed to routines using 'positional' style
     my $signature = new Params::Signature(param_style => "positional");
 
@@ -1990,7 +2268,7 @@ our $VERSION = '0.01';
         ...
     }
 
-    # - NAMED PARAMETER STYLE -
+    # -- named parameter style --
     # all subroutines use named parameters only
     # (note difference in handling 'other' parameter using "mixed" style below)
     my $named_signature = new Params::Signature(param_style => "named");
@@ -2015,7 +2293,7 @@ our $VERSION = '0.01';
         ...
     }
 
-    # - MIXED PARAMETER STYLE -
+    # -- mixed parameter style --
     # subroutines can mix parameter types (positional and named)
     my $signature = new Params::Signature();
     mixed_sub_one(1, 'hi', {other => 3});
@@ -2062,7 +2340,12 @@ our $VERSION = '0.01';
         ...
     }
 
+    ##############################
+    # Using Class Methods 
+    #
     # All object methods are available as class methods
+    # for developers that don't want to use an object nor
+    # import exported sub's into current namespace 
     Params::Signature->validate(...);
     Params::Signature->register_type(...);
     Params::Signature->register_class(...);
@@ -2353,7 +2636,7 @@ A parameter is made up of a type constraint, a name (and aliases), an optional/r
 
 =head2 Type Constraint
 
-The value assigned to a parameter must match at least one of the type constraints assigned to the parameter.  Multiple type constraints are separated by an or bar (pipe symbol).  New types can be added to a Params::Signature object or to the global default using L</register_type>, L</register_class> and L</register_role>.
+The value assigned to a parameter must match at least one of the type constraints assigned to the parameter.  Multiple type constraints are separated by an or bar (pipe symbol).  New types can be added to a Params::Signature object or to the global default using L</register_type>, L</register_class>, L</register_role>, L</register_enum> and L</register_regex>.  See the method definitions for details.
 
 The default types are:
 
@@ -2368,11 +2651,14 @@ The default types are:
                               Int
                           ClassName
                   Ref
+                      ArrayRef
+                      HashRef
                       CodeRef
                       RegexpRef
                       GlobRef
                       FileHandle
                       Object
+
 
 =cut
 
@@ -2468,10 +2754,69 @@ The "optional:" pseudo-parameter is used to indicate that all subsequent paramet
 
 =cut
 
+=head1 PARAMETER COERCION
+
+The default type constraints are helpful, but using custom type constraints makes parameter definition even better.  To improve on that, you can register subroutines that will coerce one value into another.  For example, you can coerce a simple hash reference into an object.  Once a new type (e.g. Foo::Bar) is registered, multiple coercions can be registered.  This means that you can coerce from multiple types to the target type.
+
+Coercion is enabled by default.  The magic happens automatically inside of the C<validate> method, but only if a parameter value does not match one of the acceptable types for a parameter.  If the parameter doesn't fit, C<validate> will attempt to coerce the value to make it fit.
+
+    register_class("Foo::Bar");
+    register_coerce("HashRef", "Foo::Bar", sub { new Foo::Bar(%{$_[0]}) });
+    register_coerce("ArrayRef", "Foo::Bar", sub { new Foo::Bar(@{$_[0]}) });
+    register_coerce(
+                from => "Str", 
+                to   => "Foo::Bar", 
+                via  => sub { new Foo::Bar(stringy => $_[0]) }
+                );
+
+    # if x is a HashRef, ArrayRef or Str in @_ it will be a Foo::Bar
+    # in @params_array
+    my @params_array = validate(\@_, ["1_2_or_3 number", "Foo::Bar x"])
+
+It's possible to manually coerce a value from one "thing" to another.
+
+    # manually coerce something
+    my $h_ref = { foo => 1 };
+    my $can_it_coerce = coerce(
+                            to   => "Foo::Bar",
+                            from => $h_ref,
+                            check_only => 1
+                            );
+    my $give_me_a_foo_bar = coerce("Foo::Bar", $h_ref);
+
+If you can't make up your mind, specifying multiple types to coerce to is also acceptable.  The first value (from left to right) that can be coerced to will be used.  If a coercion cannot be done to one type, the next type is attempted.  If a value cannot be coerced to any of the requested types, an C<undef> value is returned. 
+
+    # coerce it to any one of the types in "to"
+    my $info = {};
+    $can_it_coerce = coerce(
+                            to   => "Str|Num|Foo::Bar",
+                            from => $h_ref,
+                            check_only => 1,
+                            info => $info
+                            );
+    # we did not define a way to turn a hash into an Str or Num
+    # but "Foo::Bar" would work so ...
+    # $can_it_coerce == $info->{to} == "Foo::Bar"
+
+    my $whatever = coerce(
+                            to   => "Str|Num|Foo::Bar",
+                            from => $h_ref,
+                            info => $info
+                            );
+    if ($info->{to} ne "Foo::Bar")
+    {
+        die("Goodbye, cruel world!");
+    }
+
+On second thought, maybe you should decide what you want and just coerce it to that one value.
+
+=cut
 
 =head1 METHODS
 
-All functionality is accessed via methods.  You can use C<Params::Signature->method()> or construct a module or application-specific Params::Signature object.  Class methods may be used to validate parameters using global settings.  By default, parameters are positional, fuzzy logic is disabled, and Carp::confess is used to report failures.  Class methods work just like object methods.
+All functionality is accessed via methods.  You can use class methods (C<Params::Signature->method()>) or construct a module or application-specific Params::Signature object.  Class methods may be used to validate parameters using global settings.  By default, parameters are positional, fuzzy logic is disabled, and Carp::confess is used to report failures.  Class methods work just like object methods.  Exported subroutines use the "global" (class) settings.
+
+    use Params::Signature qw(:all);
 
     # register globally
     Params::Signature->register_type(
@@ -2480,10 +2825,17 @@ All functionality is accessed via methods.  You can use C<Params::Signature->met
                     where => sub { $_[0] % 2 == 0 },
                     inline_as => sub { '$_[0] % 2 == 0'}
                     );
-    # later ... use new type in a signature 
+    register_type(
+                    name => "EvenNum",
+                    parent => "Num",
+                    where => sub { $_[0] % 2 == 0 },
+                    inline_as => sub { '$_[0] % 2 == 0'}
+                    );
+
+    # later ... use new types in a signature 
     Params::Signature->validate(
                     \@_,
-                    ["EvenInt one", "EvenInt two", "Str three"]
+                    ["EvenInt one", "EvenNum two", "Str three"]
                     );
 
     #  - or -
@@ -2505,6 +2857,7 @@ All functionality is accessed via methods.  You can use C<Params::Signature->met
     new Params::Signature(
             param_style => "positional",
             fuzzy => 1,
+            coerce => 1,
             on_fail => sub { oops($_[0]) },
             normalize_keys => sub { lc $_[0] },
             called => "My::Module"
@@ -2540,6 +2893,13 @@ B<fuzzy>: Allow the L</"validate"> method method to use 'fuzzy logic' to determi
     }
 
 If fuzzy is enabled, it's safest to pass named values in one anonymous hash or positional values at the appropriate index position.
+
+B<coerce>:  If a parameter value can be coerced into the type required in a signature, the L</validate> method will automatically coerce it and return the coerced value rather than the original value.  If multiple types are accepted for a parameter, L</validate> will attempt to coerce the parameter value into each of the acceptable types until it finds one that succeeds or all coercion attempts fail.  A coercion method must be registered via L</register_coerce> in order for coercion to take place.
+
+    # this will coerce the value for 'even' into an EvenInt first
+    # then an EvenNum (assuming coercions for both types have
+    # been registered)
+    @params = validate(\_@, ["EvenInt|EvenNum even"]);
 
 B<on_fail>:  Set the subroutine to call if an error is encountered.  Carp::confess is called by default.
 
@@ -2640,7 +3000,9 @@ B<param_style>: Explicitly set the parameter style used to validate parameters.
 
 B<normalize_keys>: A reference to a subroutine.  For named parameters, alter the keys used to call the calling subroutine to match the parameter names used in the signature.  The names in the signature are not passed to this subroutine.
 
-B<fuzzy>: Enable 'fuzzy logic' used to determine what type of parameter style was used.  This overrides the default in the Params::Signature object.
+B<fuzzy>: Enable 'fuzzy logic' used to determine what type of parameter style was used.  This overrides the default in the Params::Signature object or the global (class) value.
+
+B<coerce>: Enable or disable automatic coercion of parameter values.
 
 B<called>: A string included in any error messages produced.
 
@@ -2763,6 +3125,36 @@ Register a type of string that matches a specific regex.  This is intended to el
 
 =cut
 
+=head2 register_enum
+
+Register a type which must be assigned one of the values in a finite list of values.
+
+    $signature->register_enum(
+         name => "Gender",
+         enum => ["male", "female"]
+         );
+    ...
+    my $param = $signature->validate(\@_, ["Gender gender = 'male'"]);
+
+=cut
+
+=head2 register_coerce
+
+Register a way to coerce a value from one type to another.  The 'from' and 'to' types must be registered before attempting to register a coercion.  Coercions work only in the context in which they are registered.  A coercion defined via a Params::Signature object is only visible via that object. A "global" coercion is visible to imported subroutines and class methods.  Object methods currently ignore anything not explicitly registered with the object.  This maintains a separation between object-level and global/class-level registries.
+
+    # HashRef is a built-in type
+    $signature->register_class("Foo::Bar");
+    $signature->register_coerce(
+            from => "HashRef",
+            to => "Foo::Bar",
+            via => sub { new Foo::Bar(%{$_[0]}) }
+         );
+    ...
+    # if $_[0] is a HashRef, $param->{foo} will be a Foo::Bar object
+    my $param = $signature->validate(\@_, ["Foo::Bar foo"]);
+
+=cut
+
 =head2 type_check
 
 This method is used to confirm a value meets a type constraint.  The type constraint can be made up of multiple types.  This method may be useful when writing C<where> and C<inline_as> tests for evaluating complex, custom types.
@@ -2780,6 +3172,40 @@ Returns 1 if the value matches at least one type in the type constraint or 0 oth
 
 =cut
 
+=head2 coerce
+
+Coerce a value from one type to another.  It's perfectly legal, and also a little strange, to specify multiple types to coerce to.  Coercions are attempted from left to right and the first coercion that succeeds "wins".  In some contexts, a subroutine may not care which type is passed in as long as one of the valid types is passed in.  In most cases, only one type will be passed to C<coerce>.  Types for which a coercion has not been registered are silently ignored.  If all coercion attempts fail, an C<undef> is returned.
+
+    # if you want info about which type $coerced is, pass in $info
+    # (which requires the use of named parameters)
+    my $info = {};
+    my $coerced_value = coerce(
+                         to => "Thingy|My::Class|Str",
+                         from => $value,
+                         check_only => 0,
+                         info => $info
+                         );
+    
+    my $also_coerced = coerce("My::Class", $value);
+
+B<to>: the type to covert to; this can be multiple types separated by an or bar (pipe symbol)
+
+B<from>: the actual value to convert
+
+B<check_only>: if not 0, only check if a coercion is possible but don't actually peform the coercion
+
+B<info>: a hash reference that receives information about the coercion attempt; specifically, 'to' is set to the value that 'from' was coerced to and 'msg' contains either a success or failure message.
+
+    $info = { to => 'My::Class', msg => "ok" }
+
+
+B<Return Value>:
+
+Returns the coerced value or C<undef>, if the value could not be coerced.  If C<check_only> is enabled, the name of the type that 'from' would have been coerced to is returned.
+
+=cut
+
+
 =head1 PERFORMANCE
 
 The Params::Signature object caches the parsed form of each signature it validates.  Re-using the same object to validate subroutine parameters eliminates the need to parse the signature every time.  Using a singleton per module or application is recommended for reducing the amount of time it takes to validate parameters.
@@ -2787,11 +3213,11 @@ The Params::Signature object caches the parsed form of each signature it validat
 
 =head1 LIMITATIONS AND CAVEATS
 
-The current implementation requires that you either define your own Params::Signature object or use the class as an object (Params::Signature->validate).  It's recommended that your module or application define a singleton to use to validate parameters.  Using a separate object per thread should be safe, though this has not been tested. 
+If using threads, it's recommended that your module or application define a singleton to use to validate parameters.  Using a separate object per thread should be safe, though this has not been tested. 
 
 Container-style type constraints are currently not supported directly.  For example, you cannot define a parameter as "ArrayRef[Int]" and have the validate method confirm that the parameter is an array of integers.  A custom type with an appropriate C<where> and C<inline_as> parameter could be used to accomplish this.  That's left as an exercise to the reader.
 
-When using "fuzzy", avoid ambiguity in parameter names.  Parameter names should not match values that are likely to be assigned to any parameter.  In other words, if a parameter name is "yes" and the value "yes" is passed to the subroutine, the value "yes" may be mistaken for the parameter name.  This should be rare, but you have been warned.  Don't use ambiguous parameter names that can also be a value.
+When using "fuzzy", avoid ambiguity in parameter names.  Parameter names should not match values that are likely to be assigned to any parameter.  In other words, if a parameter name is "yes" and the value "yes" is passed to the subroutine, the value "yes" may be mistaken for the parameter name.  This should be rare, but you have been warned.  Don't use ambiguous parameter names that can also be a value.  Parameter names are normalized before being evaluated, so keep that in mind as well.
 
 Using "fuzzy" to decipher what someone meant is powerful but potentially dangerous.  Using good parameter names should eliminate any nasty surprises and allow you to produce subroutines that accept either positional or named parameters.  Passing named parameters inside an anonymous hash is a good idea. 
 
@@ -2799,7 +3225,7 @@ The "fuzzy" logic may need to be improved to handle corner cases I did not think
 
 There is no XS version of this module at this time.  It's pure perl.  Perhaps that's a feature rather than a limitation?
 
-This documentation might not be very clear, even though I know exactly what I meant to say at the time I tried to say it.
+This documentation might not be very clear, even though I know exactly what I meant to say at the time I tried to say it. 
 
 =cut
 
