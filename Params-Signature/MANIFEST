@@ -11,5 +11,8 @@ t/03-callbacks.t
 t/04-normalize-keys.t
 t/05-class-method.t
 t/06-multi.t
-t/07-registered_types.t
-t/manifest.t
+t/07-registered-types.t
+t/08-validate-subroutine.t
+t/09-registered-types-subroutines.t
+t/10-coerce-method.t
+t/11-coerce-subroutine.t

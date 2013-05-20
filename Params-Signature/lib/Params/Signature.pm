@@ -2209,26 +2209,31 @@ our $VERSION = '0.01';
 
     ##############################
     # Using imported subroutines
+
     use Params::Signature qw(:all);
+
+    # use built-in types in signature
+    my $params_hashref = validate(\@_, ["Str s", "Int i"])
 
     # register new types to extend default type constraint system
     register_class("Foo::Bar");
     register_role("DoesIt");
     register_enum("1_2_or_3", [1, 2, 3]);
 
-    my $params_hashref = validate(\@_, ["DoesIt doit", "HashRef is_a_bar"])
+    my $params_hashref = validate(\@_, ["DoesIt doit", "HashRef a_hash"])
 
     # to magically coerce a hash into a Foo::Bar via validate()
     register_coerce("HashRef", "Foo::Bar", sub { new Foo::Bar(%{$_[0]})});
 
-    # if x is a HashRef in @_ it will be a Foo::Bar
-    # in @params_array
-    my @params_array = validate(\@_, ["1_2_or_3 number", "Foo::Bar x"])
+    # if bar is a HashRef in @_ it will be coerced by validate
+    # into a Foo::Bar object in @params_array
+    my @params_array = validate(\@_, ["1_2_or_3 number", "Foo::Bar bar"])
 
 
     ##############################
     # Using Object-Oriented Interface
     # ... show off advanced features
+
     use Params::Signature;
 
     # -- positional parameter style --
@@ -2299,6 +2304,7 @@ our $VERSION = '0.01';
     mixed_sub_one(1, 'hi', {other => 3});
     mixed_sub_one(1, 'hi', other => 3);
     mixed_sub_one(1, 'hi', 'other', 3);
+
     sub mixed_sub_one
     {
         # parameters are assumed to be positional,
@@ -2324,18 +2330,18 @@ our $VERSION = '0.01';
     my $fuzzy_signature = new Params::Signature(fuzzy => 1);
 
     # use positional arguments
-    call_fuzzy_style(1, 2)
+    call_fuzzy_style(1, "hi")
 
     # use named arguments
-    call_fuzzy_style(one => 1, two => "hi")
+    call_fuzzy_style(x => 1, word => "hi")
 
     # use named arguments in a hash 
-    call_fuzzy_style({one => 1, two => "hi"})
+    call_fuzzy_style({x => 1, word => "hi"})
 
     sub call_fuzzy_style
     {
         # don't need to change signature regardless of how sub is called
-        my $params = $fuzzy_signature->validate(\@_, ["Int one", "Str two"]);
+        my $params = $fuzzy_signature->validate(\@_, ["Int x", "Str word"]);
         
         ...
     }
@@ -2346,6 +2352,7 @@ our $VERSION = '0.01';
     # All object methods are available as class methods
     # for developers that don't want to use an object nor
     # import exported sub's into current namespace 
+
     Params::Signature->validate(...);
     Params::Signature->register_type(...);
     Params::Signature->register_class(...);
