@@ -4,9 +4,8 @@ use strict;
 use warnings FATAL => 'all';
 use Test::More;
 
-use Data::Dumper;
-use Try::Tiny;
 use Params::Signature;
+use Types::Standard qw(:all);
 
 my $test_count = 0;
 
@@ -19,7 +18,7 @@ sub catch_failed
     $failed     = 1;
 }
 
-my $signature = new Params::Signature(on_fail => \&catch_failed, register_builtins => 1);
+my $signature = new Params::Signature(on_fail => \&catch_failed);
 
 Main:
 {
@@ -48,12 +47,13 @@ sub test_1_callback_1_field_success
     my $answer;
 
     $answer = $signature->validate(
-        params    => [1],
-        signature => ["Int one"],
-        callbacks => {
+        [1],
+        ["Int one"],
+        {callbacks => {
             one => {
                     "success" => sub { $_[0] == 1 }
             }
+        }
         }
         );
 
@@ -68,9 +68,9 @@ sub test_1_callback_each_for_3_fields_success
     my $answer;
 
     $answer = $signature->validate(
-        params    => [1,         2,         3],
-        signature => ["Int one", "Int two", "Int three"],
-        callbacks => {
+        [1,         2,         3],
+        ["Int one", "Int two", "Int three"],
+        {callbacks => {
             one => {
                     "success" => sub { $_[0] == 1 }
             },
@@ -80,6 +80,7 @@ sub test_1_callback_each_for_3_fields_success
             three => {
                       "success" => sub { $_[0] == 3 }
             }
+        }
         }
         );
     ok(!$failed && $answer->{one} == 1 && $answer->{two} == 2 && $answer->{three} == 3, "$name: $failed_msg");
@@ -93,16 +94,16 @@ sub test_1_callback_for_1_field_reject
     my $answer;
 
     $answer = $signature->validate(
-        params    => [1],
-        signature => ["Int one"],
-        callbacks => {
+        [1],
+        ["Int one"],
+        {callbacks => {
             one => {
                     "fail" => sub { $_[0] == 2 }
             }
-        }
+        }}
         );
 
-    ok($failed && $failed_msg =~ /Failed callback 'fail' for 'one'/, "$name: $failed_msg");
+    ok($failed && $failed_msg =~ /failed validation via callback 'fail'/, "$name: $failed_msg");
 }
 
 # 4. 1 callback each for 3 fields, reject 1 field
@@ -113,9 +114,9 @@ sub test_1_callback_each_for_3_fields_reject
     my $answer;
 
     $answer = $signature->validate(
-        params    => [1,         2,         3],
-        signature => ["Int one", "Int two", "Int three"],
-        callbacks => {
+        [1,         2,         3],
+        ["Int one", "Int two", "Int three"],
+        {callbacks => {
             one => {
                     "success" => sub { $_[0] == 1 }
             },
@@ -125,9 +126,9 @@ sub test_1_callback_each_for_3_fields_reject
             three => {
                       "fail" => sub { $_[0] == 1 }
             }
-        }
+        }}
         );
-    ok($failed && $failed_msg =~ /Failed callback 'fail' for 'three'/, "$name: $failed_msg");
+    ok($failed && $failed_msg =~ /failed validation via callback 'fail'/, "$name: $failed_msg");
 }
 
 # 5. 3 callback for 1 field, success
@@ -138,15 +139,15 @@ sub test_3_callback_for_1_field_success
     my $answer;
 
     $answer = $signature->validate(
-        params    => [1],
-        signature => ["Int one"],
-        callbacks => {
+        [1],
+        ["Int one"],
+        {callbacks => {
             one => {
                     "success 1" => sub { $_[0] == 1 },
                     "success 2" => sub { $_[0] < 2 },
                     "success 3" => sub { $_[0] < 3 }
             }
-        }
+        }}
         );
 
     ok(!$failed && $answer->{one} == 1, "$name: $failed_msg");
@@ -160,9 +161,9 @@ sub test_3_callback_each_for_3_fields_success
     my $answer;
 
     $answer = $signature->validate(
-        params    => [1,         2,         3],
-        signature => ["Int one", "Int two", "Int three"],
-        callbacks => {
+        [1,         2,         3],
+        ["Int one", "Int two", "Int three"],
+        {callbacks => {
             one => {
                     "success 1.1" => sub { $_[0] == 1 },
                     "success 1.2" => sub { $_[0] < 2 },
@@ -178,7 +179,7 @@ sub test_3_callback_each_for_3_fields_success
                       "success 3.2" => sub { $_[0] < 4 },
                       "success 3.3" => sub { $_[0] < 5 }
             }
-        }
+        }}
         );
 
     ok(!$failed && $answer->{one} == 1, "$name: $failed_msg");
@@ -192,18 +193,18 @@ sub test_3_callback_for_1_field_reject
     my $answer;
 
     $answer = $signature->validate(
-        params    => [1],
-        signature => ["Int one"],
-        callbacks => {
+        [1],
+        ["Int one"],
+        {callbacks => {
             one => {
                     "success 1" => sub { $_[0] == 1 },
                     "success 2" => sub { $_[0] < 2 },
                     "fail 3"    => sub { $_[0] < 1 }
             }
-        }
+        }}
         );
 
-    ok($failed && $failed_msg =~ /Failed callback 'fail 3' for 'one'/, "$name: $failed_msg");
+    ok($failed && $failed_msg =~ /failed validation via callback 'fail 3'/, "$name: $failed_msg");
 }
 
 # 8. 3 callback each for 3 fields, reject 1 field
@@ -214,9 +215,9 @@ sub test_3_callback_each_for_3_fields_reject_1_field
     my $answer;
 
     $answer = $signature->validate(
-        params    => [1,         2,         3],
-        signature => ["Int one", "Int two", "Int three"],
-        callbacks => {
+        [1,         2,         3],
+        ["Int one", "Int two", "Int three"],
+        {callbacks => {
             one => {
                     "success 1.1" => sub { $_[0] == 1 },
                     "success 1.2" => sub { $_[0] < 2 },
@@ -232,10 +233,10 @@ sub test_3_callback_each_for_3_fields_reject_1_field
                       "success 3.2" => sub { $_[0] < 4 },
                       "fail 3.3"    => sub { $_[0] < 3 }
             }
-        }
+        }}
         );
 
-    ok($failed && $failed_msg =~ /Failed callback 'fail 3.3' for 'three'/, "$name: $failed_msg");
+    ok($failed && $failed_msg =~ /failed validation via callback 'fail 3.3'/, "$name: $failed_msg");
 }
 
 $test_count += scalar grep /^test_/, keys(%main::);

@@ -4,8 +4,7 @@ use strict;
 use warnings FATAL => 'all';
 use Test::More;
 
-use Data::Dumper;
-use Try::Tiny;
+use Types::Standard qw(:all);
 use Params::Signature;
 use Params::Signature::Multi;
 
@@ -51,8 +50,8 @@ sub test_resolve_2_signatures_1_match
     my $answer;
 
     $answer = $multi->resolve(
-        params    => [1, 2],
-        signatures => [
+        [1, 2],
+        [
             { id => "one", signature => ["Int one"]},
             { id => "two", signature => ["Int one", "Int two"]}
         ]
@@ -68,8 +67,8 @@ sub test_resolve_3_signatures_2_match
     my $answer;
 
     $answer = $multi->resolve(
-        params    => [1, 2],
-        signatures => [
+        [1, 2],
+        [
             { id => "one", signature => ["Int one"]},
             { id => "two", signature => ["Int one", "Int two"]},
             { id => "three", signature => ["Int one", "Int two", "Int three?"]}
@@ -86,8 +85,8 @@ sub test_resolve_3_signatures_0_match
     my $answer;
 
     $answer = $multi->resolve(
-        params    => [1, "hi"],
-        signatures => [
+        [1, "hi"],
+        [
             { id => "one", signature => ["Int one"]},
             { id => "two", signature => ["Int one", "Int two"]},
             { id => "three", signature => ["Int one", "Int two", "Int three?"]}
@@ -114,8 +113,8 @@ sub test_dispatch_2_signatures_1_match
     my $answer;
 
     $answer = $multi->dispatch(
-        params    => [1, 2],
-        signatures => [
+        [1, 2],
+        [
             { id => "one", signature => ["Int one"], call => \&dispatch_not_ok},
             { id => "two", signature => ["Int one", "Int two"], call => \&dispatch_ok}
         ]
@@ -131,8 +130,8 @@ sub test_dispatch_3_signatures_2_match
     my $answer;
 
     $answer = $multi->dispatch(
-        params    => [1, 2],
-        signatures => [
+        [1, 2],
+        [
             { id => "one", signature => ["Int one"], call => \&dispatch_not_ok},
             { id => "two", signature => ["Int one", "Int two"], call => \&dispatch_ok},
             { id => "three", signature => ["Int one", "Int two", "Int three?"], call => \&dispatch_not_ok}
@@ -149,8 +148,8 @@ sub test_dispatch_3_signatures_0_match
     my $answer = "";
 
     $answer = $multi->dispatch(
-        params    => [1, "hi"],
-        signatures => [
+        [1, "hi"],
+        [
             { id => "one", signature => ["Int one"], call => \&dispatch_not_ok},
             { id => "two", signature => ["Int one", "Int two"], call => \&dispatch_not_ok},
             { id => "three", signature => ["Int one", "Int two", "Int three?"], call => \&dispatch_not_ok}
@@ -168,8 +167,8 @@ sub test_dispatch_3_signatures_missing_call
     my $answer = "";
 
     $answer = $multi->dispatch(
-        params    => [1, 2],
-        signatures => [
+        [1, 2],
+        [
             { id => "one", signature => ["Int one"]},
             { id => "two", signature => ["Int one", "Int two"]},
             { id => "three", signature => ["Int one", "Int two", "Int three?"]},
@@ -187,8 +186,8 @@ sub test_class_resolve_2_signatures_1_match
     my $answer;
 
     $answer = Params::Signature::Multi->resolve(
-        params    => [1, 2],
-        signatures => [
+        [1, 2],
+        [
             { id => "one", signature => ["Int one"]},
             { id => "two", signature => ["Int one", "Int two"]}
         ]
@@ -204,8 +203,8 @@ sub test_class_resolve_3_signatures_2_match
     my $answer;
 
     $answer = Params::Signature::Multi->resolve(
-        params    => [1, 2],
-        signatures => [
+        [1, 2],
+        [
             { id => "one", signature => ["Int one"]},
             { id => "two", signature => ["Int one", "Int two"]},
             { id => "three", signature => ["Int one", "Int two", "Int three?"]}
@@ -222,8 +221,8 @@ sub test_class_resolve_3_signatures_0_match
     my $answer;
 
     $answer = Params::Signature::Multi->resolve(
-        params    => [1, "hi"],
-        signatures => [
+        [1, "hi"],
+        [
             { id => "one", signature => ["Int one"]},
             { id => "two", signature => ["Int one", "Int two"]},
             { id => "three", signature => ["Int one", "Int two", "Int three?"]}
@@ -240,8 +239,8 @@ sub test_class_dispatch_2_signatures_1_match
     my $answer;
 
     $answer = Params::Signature::Multi->dispatch(
-        params    => [1, 2],
-        signatures => [
+        [1, 2],
+        [
             { id => "one", signature => ["Int one"], call => \&dispatch_not_ok},
             { id => "two", signature => ["Int one", "Int two"], call => \&dispatch_ok}
         ]
@@ -257,8 +256,8 @@ sub test_class_dispatch_3_signatures_2_match
     my $answer;
 
     $answer = Params::Signature::Multi->dispatch(
-        params    => [1, 2],
-        signatures => [
+        [1, 2],
+        [
             { id => "one", signature => ["Int one"], call => \&dispatch_not_ok},
             { id => "two", signature => ["Int one", "Int two"], call => \&dispatch_ok},
             { id => "three", signature => ["Int one", "Int two", "Int three?"], call => \&dispatch_not_ok}
@@ -275,8 +274,8 @@ sub test_class_dispatch_3_signatures_0_match
     my $answer = "";
 
     $answer = Params::Signature::Multi->dispatch(
-        params    => [1, "hi"],
-        signatures => [
+        [1, "hi"],
+        [
             { id => "one", signature => ["Int one"], call => \&dispatch_not_ok},
             { id => "two", signature => ["Int one", "Int two"], call => \&dispatch_not_ok},
             { id => "three", signature => ["Int one", "Int two", "Int three?"], call => \&dispatch_not_ok}
@@ -294,8 +293,8 @@ sub test_class_dispatch_3_signatures_missing_call
     my $answer = "";
 
     $answer = Params::Signature::Multi->dispatch(
-        params    => [1, 2],
-        signatures => [
+        [1, 2],
+        [
             { id => "one", signature => ["Int one"]},
             { id => "two", signature => ["Int one", "Int two"]},
             { id => "three", signature => ["Int one", "Int two", "Int three?"]},
@@ -315,12 +314,12 @@ sub test_resolve_2_signatures_1_match_unnamed
     $answer = $multi->resolve(
         [1, 2],
         [
-            { id => "one", signature => ["Int one"]},
-            { id => "two", signature => ["Int one", "Int two"]}
+            { signature => ["Int one"]},
+            { signature => ["Int one", "Int two"]}
         ]
         );
 
-    ok(!$failed && $answer eq "two", "$name: $answer, $failed, $failed_msg");
+    ok(!$failed && $answer == 1, "$name: $answer, $failed, $failed_msg");
 }
 
 sub test_resolve_3_signatures_2_match_unnamed
@@ -332,13 +331,13 @@ sub test_resolve_3_signatures_2_match_unnamed
     $answer = $multi->resolve(
         [1, 2],
         [
-            { id => "one", signature => ["Int one"]},
-            { id => "two", signature => ["Int one", "Int two"]},
-            { id => "three", signature => ["Int one", "Int two", "Int three?"]}
+            { signature => ["Int one"]},
+            { signature => ["Int one", "Int two"]},
+            { signature => ["Int one", "Int two", "Int three?"]}
         ]
         );
 
-    ok(!$failed && $answer eq "two", "$name: $answer, $failed, $failed_msg");
+    ok(!$failed && $answer == 1, "$name: $answer, $failed, $failed_msg");
 }
 
 sub test_resolve_3_signatures_0_match_unnamed
@@ -350,9 +349,9 @@ sub test_resolve_3_signatures_0_match_unnamed
     $answer = $multi->resolve(
         [1, "hi"],
         [
-            { id => "one", signature => ["Int one"]},
-            { id => "two", signature => ["Int one", "Int two"]},
-            { id => "three", signature => ["Int one", "Int two", "Int three?"]}
+            { signature => ["Int one"]},
+            { signature => ["Int one", "Int two"]},
+            { signature => ["Int one", "Int two", "Int three?"]}
         ]
         );
 
@@ -368,9 +367,9 @@ sub test_class_dispatch_3_signatures_2_match_unnamed
     $answer = Params::Signature::Multi->dispatch(
         [1, 2],
         [
-            { id => "one", signature => ["Int one"], call => \&dispatch_not_ok},
-            { id => "two", signature => ["Int one", "Int two"], call => \&dispatch_ok},
-            { id => "three", signature => ["Int one", "Int two", "Int three?"], call => \&dispatch_not_ok}
+            { signature => ["Int one"], call => \&dispatch_not_ok},
+            { signature => ["Int one", "Int two"], call => \&dispatch_ok},
+            { signature => ["Int one", "Int two", "Int three?"], call => \&dispatch_not_ok}
         ]
         );
 
@@ -386,9 +385,9 @@ sub test_class_dispatch_3_signatures_0_match_unnamed
     $answer = Params::Signature::Multi->dispatch(
         [1, "hi"],
         [
-            { id => "one", signature => ["Int one"], call => \&dispatch_not_ok},
-            { id => "two", signature => ["Int one", "Int two"], call => \&dispatch_not_ok},
-            { id => "three", signature => ["Int one", "Int two", "Int three?"], call => \&dispatch_not_ok}
+            { signature => ["Int one"], call => \&dispatch_not_ok},
+            { signature => ["Int one", "Int two"], call => \&dispatch_not_ok},
+            { signature => ["Int one", "Int two", "Int three?"], call => \&dispatch_not_ok}
         ]
         );
     $answer = (!defined($answer)) ? 'undef' : $answer;

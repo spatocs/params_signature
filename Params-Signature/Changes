@@ -5,3 +5,13 @@ Revision history for Params-Signature
 
 0.02    2013-05-17 00:00:00
         Add type coercion
+
+0.03    2013-06-20 00:00:00
+        Performance improvements
+        Support subroutine references as type constraints
+        Drop support for raw key/value pairs
+
+0.04    2013-06-25 00:00:00
+        Performance improvements
+        Add back support for raw key/value pairs
+

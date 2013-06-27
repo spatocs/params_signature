@@ -1314,10 +1314,10 @@ config.datadb = {
     },
     build_head: function(title, view) {
         var txt = &quot;&lt;table style=\&quot;margin:0px\&quot; width=100%&gt;&lt;tr&gt;&lt;td width=85%&gt;Data db: &lt;u&gt;&quot; + view + &quot; view&lt;/u&gt;&lt;/td&gt;&lt;td style=\&quot;text-align:right;\&quot;&gt;&quot;;
-        txt += &quot;&lt;span style=\&quot;cursor:pointer;\&quot; onclick=\&quot;config.datadb.show_view('&quot; + title + &quot;', 'form');\&quot; title=\&quot;Form\&quot; &gt;Δ&lt;/span&gt; &amp;nbsp; &quot;;
-        txt += &quot;&lt;span style=\&quot;cursor:pointer;\&quot; onclick=\&quot;config.datadb.show_view('&quot; + title + &quot;', 'query');\&quot; title=\&quot;Query\&quot; &gt;∈&lt;/span&gt; &amp;nbsp; &quot;;
-        txt += &quot;&lt;span style=\&quot;cursor:pointer;\&quot; onclick=\&quot;config.datadb.show_view('&quot; + title + &quot;', 'schema');\&quot; title=\&quot;Schema\&quot; &gt;Ψ&lt;/span&gt; &amp;nbsp; &quot;;
-        txt += &quot;&lt;span style=\&quot;cursor:pointer;\&quot; onclick=\&quot;config.datadb.show_view('&quot; + title + &quot;', 'tools');\&quot; title=\&quot;Tools\&quot; &gt;ξ&lt;/span&gt; &amp;nbsp; &quot;;
+        txt += &quot;&lt;span style=\&quot;cursor:pointer;\&quot; onclick=\&quot;config.datadb.show_view('&quot; + title + &quot;', 'form');\&quot; title=\&quot;Form\&quot; &gt;&#916;&lt;/span&gt; &amp;nbsp; &quot;;
+        txt += &quot;&lt;span style=\&quot;cursor:pointer;\&quot; onclick=\&quot;config.datadb.show_view('&quot; + title + &quot;', 'query');\&quot; title=\&quot;Query\&quot; &gt;&#8712;&lt;/span&gt; &amp;nbsp; &quot;;
+        txt += &quot;&lt;span style=\&quot;cursor:pointer;\&quot; onclick=\&quot;config.datadb.show_view('&quot; + title + &quot;', 'schema');\&quot; title=\&quot;Schema\&quot; &gt;&#936;&lt;/span&gt; &amp;nbsp; &quot;;
+        txt += &quot;&lt;span style=\&quot;cursor:pointer;\&quot; onclick=\&quot;config.datadb.show_view('&quot; + title + &quot;', 'tools');\&quot; title=\&quot;Tools\&quot; &gt;&#958;&lt;/span&gt; &amp;nbsp; &quot;;
         txt += &quot;&lt;span style=\&quot;cursor:pointer;\&quot; onclick=\&quot;config.datadb.show_view('&quot; + title + &quot;', 'help');\&quot; title=\&quot;Help\&quot; &gt;?&lt;/span&gt; &amp;nbsp; &quot;;
         txt += &quot;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&quot;;
         return txt;
@@ -1628,13 +1628,13 @@ config.datadb.schema = {
             txt += &quot;href=\&quot;javascript:config.datadb.schema.item_up('&quot; + title + &quot;', '&quot; + i + &quot;');\&quot;&quot;;
             }
             txt += &quot;&gt;&quot;;
-            txt += &quot;↑&lt;/a&gt; &amp;nbsp; &quot;;
+            txt += &quot;&#8593;&lt;/a&gt; &amp;nbsp; &quot;;
             txt += &quot;&lt;a &quot;;
             if (i != data['schema'].length-1) {
             txt += &quot;href=\&quot;javascript:config.datadb.schema.item_down('&quot; + title + &quot;', '&quot; + i + &quot;');\&quot;&quot;;
             }
             txt += &quot;&gt;&quot;;
-            txt += &quot;↓&lt;/a&gt; &amp;nbsp; &quot;;
+            txt += &quot;&#8595;&lt;/a&gt; &amp;nbsp; &quot;;
             txt += &quot;&lt;a style=\&quot;color:red;\&quot; href=\&quot;javascript:config.datadb.schema.item_del('&quot; + title + &quot;', '&quot; + i + &quot;');\&quot;&gt;x&lt;/a&gt;&quot;;
             txt += &quot;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&quot;;
             txt += &quot;&lt;/div&gt;&quot;;
@@ -2075,7 +2075,8 @@ config.datalist = {
         this.list_refresh(title);
     },
     item_over: function(e) {
-        e.style.backgroundColor = &quot;#f0f0f0&quot;;
+        //e.style.backgroundColor = &quot;#f0f0f0&quot;;
+        e.style.backgroundColor = &quot;#66a3ff&quot;;
     },
     item_out: function(e) {
         e.style.backgroundColor = &quot;#ffffff&quot;;
@@ -4057,6 +4058,14 @@ config.shadowTiddlers.ViewTemplate = config.shadowTiddlers.ViewTemplate.replace(
 
 //}}}</pre>
 </div>
+<div title="Home" modifier="sandor" modified="201306020119" created="201201252131" changecount="30">
+<pre>!!! Today's reminders
+&lt;&lt;showReminders leadtime:0 format:&quot;|DIFF|TITLE|TIDDLER|&quot;&gt;&gt;
+
+!!! Things to do today
+
+</pre>
+</div>
 <div title="LegacyStrikeThroughPlugin" modifier="MartinBudden" created="200607210000" tags="systemConfig">
 <pre>/***
 |''Name:''|LegacyStrikeThroughPlugin|
@@ -4086,9 +4095,9 @@ config.formatters.push(
 } //# end of &quot;install only once&quot;
 //}}}</pre>
 </div>
-<div title="MainMenu" modifier="sandor" modified="201201201745" created="201201202148" changecount="8">
+<div title="MainMenu" modifier="sandor" modified="201306020119" created="201201202148" changecount="9">
 <pre>MyReminders
-[[Today]]
+[[Home]]
 
 &lt;&lt;calendar thismonth&gt;&gt;
 
@@ -5182,13 +5191,8 @@ config.shadowTiddlers.PageTemplate=config.shadowTiddlers.PageTemplate.replace(/&
 
 //}}}</pre>
 </div>
-<div title="Today" modifier="sandor" modified="201203131816" created="201201252131" changecount="29">
-<pre>!!! Today's reminders
-&lt;&lt;showReminders leadtime:0 format:&quot;|DIFF|TITLE|TIDDLER|&quot;&gt;&gt;
-
-!!! Things to do today
-
-</pre>
+<div title="To Do Items" modifier="sandor" modified="201306020434" created="201306020121" changecount="2">
+<pre>&lt;&lt;datalist&gt;&gt;&lt;data&gt;{&quot;open&quot;:[[&quot;0&quot;,&quot;&quot;,&quot;Signature.pm&quot;],[&quot;1&quot;,&quot;checked&quot;,&quot;Remove: coerce&quot;],[&quot;1&quot;,&quot;checked&quot;,&quot;type_check&quot;],[&quot;2&quot;,&quot;checked&quot;,&quot;rename to \&quot;check\&quot;&quot;],[&quot;1&quot;,&quot;&quot;,&quot;validate_arg&quot;],[&quot;2&quot;,&quot;checked&quot;,&quot;See if having a local cache of already seen tc's speeds things up any&quot;],[&quot;3&quot;,&quot;checked&quot;,&quot;Doesn't seem to make a difference for a small number of calls&quot;],[&quot;1&quot;,&quot;&quot;,&quot;documentation&quot;],[&quot;2&quot;,&quot;&quot;,&quot;The SYNOPSIS should contain examples of a few simple scenarios&quot;],[&quot;2&quot;,&quot;&quot;,&quot;NOTE: I think Signature.pm should document just the methods and the \&quot;concepts\&quot; should probably be moved to the \&quot;manual\&quot; page&quot;],[&quot;2&quot;,&quot;&quot;,&quot;Consider moving most of the information to a \&quot;manual\&quot; similar to Type::Tiny&quot;],[&quot;2&quot;,&quot;&quot;,&quot;Remove references to obsolete methods&quot;],[&quot;2&quot;,&quot;&quot;,&quot;Add information about using external types (Type::Tiny, MooseX::Types, MooX::Types, etc)&quot;],[&quot;0&quot;,&quot;&quot;,&quot;Multi.pm&quot;],[&quot;1&quot;,&quot;&quot;,&quot;resolve&quot;],[&quot;2&quot;,&quot;&quot;,&quot;Should this use $self-&gt;validator to validate params?  if so, remove _internal_validate&quot;],[&quot;2&quot;,&quot;&quot;,&quot;Update documentation regarding returning validated and coerced params&quot;],[&quot;0&quot;,&quot;&quot;,&quot;Other&quot;],[&quot;1&quot;,&quot;&quot;,&quot;Remove unnecessary comments&quot;],[&quot;1&quot;,&quot;&quot;,&quot;Remove all commented out calls to print_debug&quot;]],&quot;closed&quot;:[],&quot;order&quot;:&quot;down&quot;}&lt;/data&gt;</pre>
 </div>
 <div title="ToolbarCommands" modifier="sandor" created="201207251537" changecount="1">
 <pre>|~ViewToolbar|closeTiddler closeOthers +editTiddler editHtml easyEdit deleteTiddler &gt; fields syncing permalink references jump|

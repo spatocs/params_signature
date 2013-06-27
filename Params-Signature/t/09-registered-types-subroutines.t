@@ -4,9 +4,11 @@ use strict;
 use warnings FATAL => 'all';
 use Test::More;
 
-use Data::Dumper;
-use Try::Tiny;
+use Types::Standard qw(:all);
+use Type::Utils qw(declare class_type duck_type role_type as enum as);
 use Params::Signature qw(:all);
+
+no warnings qw(once);
 
 my $test_count = 0;
 
@@ -34,7 +36,7 @@ Main:
         $failed_msg = "";
         #diag($test_sub_name);
 
-        $signature = new Params::Signature(param_style => "named", on_fail => \&catch_failed, register_builtins => 1, called => '');
+        $signature = new Params::Signature(param_style => "named", on_fail => \&catch_failed, called => '');
         # clear out cruft left behind by previous test
         Params::Signature->_change_class_default($signature);
         # NOTE: _change_class_default should not be used in applications!
@@ -52,11 +54,12 @@ sub test_register_class
     my $name = shift;
     my $answer;
 
-    register_class("Params::Signature");
+    $main::Params_Signature = class_type "Params_Signature", {class => "Params::Signature"};
 
     $answer = validate(
-        params    => [sig => $signature],
-        signature => ["Params::Signature sig"],
+        [sig => $signature],
+        ["Params_Signature sig"],
+	{fuzzy => 2}
         );
 
     ok(!$failed && $answer->{sig} == $signature, "$name: $failed_msg");
@@ -68,11 +71,12 @@ sub test_register_role
     my $name = shift;
     my $answer;
 
-    register_role("Params::Signature");
+    $main::Does_Params_Signature = role_type "Does_Params_Signature", {role => "Params::Signature"};
 
     $answer = validate(
-        params    => [sig => $signature],
-        signature => ["Params::Signature sig"],
+        [sig => $signature],
+        ["Does_Params_Signature sig"],
+	{fuzzy => 2}
         );
 
     ok(!$failed && $answer->{sig} == $signature, "$name: $failed_msg");
@@ -84,11 +88,12 @@ sub test_register_can
     my $name = shift;
     my $answer;
 
-    register_can("CanValidate", "validate");
+    $main::CanValidate = duck_type "CanValidate", [qw(validate)];
 
     $answer = validate(
-        params    => [sig => $signature],
-        signature => ["CanValidate sig"],
+        [sig => $signature],
+        ["CanValidate sig"],
+	{fuzzy => 2}
         );
 
     ok(!$failed && $answer->{sig} == $signature, "$name: $failed_msg");
@@ -100,14 +105,15 @@ sub test_register_can_invalid
     my $name = shift;
     my $answer;
 
-    register_can("CanFoo", "foo");
+    $main::CanFoo = duck_type "CanFoo", [qw(foo)];
 
     $answer = validate(
-        params    => [sig => $signature],
-        signature => ["CanFoo sig"],
+        [sig => $signature],
+        ["CanFoo sig"],
+	{fuzzy => 2}
         );
 
-    ok($failed && !$answer->{sig} && $failed_msg =~ /expected CanFoo/, "$name: $failed_msg");
+    ok($failed && !$answer->{sig} && $failed_msg =~ /xpected CanFoo/, "$name: $failed_msg");
 }
 
 sub test_register_regex
@@ -116,11 +122,12 @@ sub test_register_regex
     my $name = shift;
     my $answer;
 
-    register_regex("IP4", '\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.|$)){4}\b');
+    $main::IP4 = declare "IP4" => as StrMatch[qr/\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.|$)){4}\b/];
 
     $answer = validate(
-        params    => [ip => "127.0.0.1"],
-        signature => ["IP4 ip"],
+        [ip => "127.0.0.1"],
+        ["IP4 ip"],
+	{fuzzy => 2}
         );
 
     ok(!$failed && $answer->{ip} eq "127.0.0.1", "$name: $failed_msg");
@@ -132,14 +139,16 @@ sub test_register_regex_invalid
     my $name = shift;
     my $answer;
 
-    register_regex("IP4", '\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.|$)){4}\b');
+    #$main::IP4 = declare "IP4" => as StrMatch[qr/\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.|$)){4}\b/], message => sub { "$_[0]: invalid type of value" };
+    $main::IP4 = declare "IP4" => as StrMatch[qr/\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.|$)){4}\b/];
 
     $answer = validate(
-        params    => [ip => "ABC"],
-        signature => ["IP4 ip"],
+        [ip => "ABC"],
+        ["IP4 ip"],
+	{fuzzy => 2}
         );
 
-    ok($failed && !$answer->{ip} && $failed_msg =~ /invalid type of value/, "$name: $failed_msg");
+    ok($failed && !$answer->{ip} && $failed_msg =~ /failed validation/, "$name: $failed_msg");
 }
 
 sub test_register_enum_multi_values
@@ -148,11 +157,13 @@ sub test_register_enum_multi_values
     my $name = shift;
     my $answer;
 
-    register_enum("OneTwoThree", "1", "2", "3");
+    #enum "OneTwoThree", ["1", "2", "3"];
+    $main::OneTwoThree = enum "OneTwoThree", [qw(1 2 3)];
 
     $answer = validate(
-        params    => [sig => 2],
-        signature => ["OneTwoThree sig"],
+        [sig => 2],
+        ["OneTwoThree sig"],
+	{fuzzy => 2}
         );
 
     ok(!$failed && $answer->{sig} == 2, "$name: $failed_msg");
@@ -164,14 +175,16 @@ sub test_register_enum_multi_invalid
     my $name = shift;
     my $answer;
 
-    register_enum("OneTwoThree", "1", "2", "3");
+    #enum "OneTwoThree", ["1", "2", "3"];
+    $main::OneTwoThree = enum 'OneTwoThree', [qw(1 2 3)];
 
     $answer = validate(
-        params    => [sig => 4],
-        signature => ["OneTwoThree sig"],
+        [sig => 4],
+        ["OneTwoThree sig"],
+	{fuzzy => 2}
         );
 
-    ok($failed && !$answer->{sig} && $failed_msg =~ /invalid type of value/, "$name: $failed_msg");
+    ok($failed && !$answer->{sig} && $failed_msg =~ /failed validation/, "$name: $failed_msg");
 }
 
 sub test_register_enum_invalid_value
@@ -180,14 +193,15 @@ sub test_register_enum_invalid_value
     my $name = shift;
     my $answer;
 
-    register_enum("Eleven", "11");
+    $main::Eleven = enum "Eleven", ["11"];
 
     $answer = validate(
-        params    => [sig => "111"],
-        signature => ["Eleven sig"],
+        [sig => "111"],
+        ["Eleven sig"],
+	{fuzzy => 2}
         );
 
-    ok($failed && !$answer->{sig} && $failed_msg =~ /invalid type of value/, "$name: $failed_msg");
+    ok($failed && !$answer->{sig} && $failed_msg =~ /failed validation/, "$name: $failed_msg");
 }
 
 sub test_register_enum_invalid_value2
@@ -196,14 +210,15 @@ sub test_register_enum_invalid_value2
     my $name = shift;
     my $answer;
 
-    register_enum("Eleven", "11");
+    enum "Eleven", ["11"];
 
     $answer = validate(
-        params    => [sig => "1"],
-        signature => ["Eleven sig"],
+        [sig => "1"],
+        ["Eleven sig"],
+	{fuzzy => 2}
         );
 
-    ok($failed && !$answer->{sig} && $failed_msg =~ /invalid type of value/, "$name: $failed_msg");
+    ok($failed && !$answer->{sig} && $failed_msg =~ /failed validation/, "$name: $failed_msg");
 }
 $test_count += scalar grep /^test_/, keys(%main::);
 plan tests => $test_count;
