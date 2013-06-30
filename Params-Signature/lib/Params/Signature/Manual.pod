@@ -310,13 +310,13 @@ B<How it works>
 
 When "fuzzy" is set to "1", L</validate> detects if one parameter, a hash, is passed in as the first and only parameter.  If so, the hash's keys are examined to determine if they match any parameter names.  If any key matches any parameter name, the contents of the hash are validated.  
 
-When fuzzy is set to "2", the rules for "fuzzy=1" are applied.  If that fails and C<@_> contains an even-sized list of values, the values are examined to see if the values alternate between a parameter name and a value.  If a parameter name is found in an even element (index 0, 2, 4, etc.), the "named" parameter style is used.  If no parameter names are found where they should be, the "positional" style is used.  If a style cannot be detected, L</validate> will use the default style in effect.
+When fuzzy is set to "2", the rules for "fuzzy=1" are applied first.  If that fails and C<@_> contains an even-sized list of values, the values are examined to see if the values alternate between a parameter name and a value.  If a parameter name is found in an even element (index 0, 2, 4, etc.), the "named" parameter style is used.  If no parameter names are found where they should be, the "named" style is not used.  If the "named" style cannot be detected, L</validate> will use the default style in effect (which should be "positional").
 
 Note that using "fuzzy" will not detect a "mixed" parameter style.  It detects the "named" style by looking for parameter names in a hash at C<$_[0]> or at the appropriate indices in C<@_>.
 
 If "fuzzy" is enabled, the default parameter style should be "positional".  Thus, if no parameter names are detected, parameters are processed as positional parameters.
 
-To avoid ambiguity, parameter names should not match values that are assigned to a parameter.  In other words, if a parameter name is "yes" and the value "yes" is passed to the subroutine at an even-numbered index, the value "yes" may be mistaken for the parameter name.  This should be rare, but you have been warned.  Don't use ambiguous parameter names that can also be a value.  Use a hash instead of raw key/valyes and you should be fine.
+To avoid ambiguity, parameter names should not match values that are assigned to a parameter.  In other words, if a parameter name is "yes" and the value "yes" is passed to the subroutine at an even-numbered index, the value "yes" may be mistaken for the parameter name.  This should be rare, but you have been warned.  When fuzzy is set to 2, don't use ambiguous parameter names that can also be a value.  Use a hash instead of raw key/values.
 
 Using "fuzzy=2" to decipher what someone meant is powerful but potentially dangerous.  Like a bomb, it can go "boom!" when you least expect it.  Using good parameter names should eliminate any nasty surprises and allow you to produce subroutines that accept either positional or named parameters.  Have I mentioned that passing named parameters in a hash is a good idea?  Yes, I just did (again)!
 
@@ -333,7 +333,8 @@ Using "fuzzy=2" to decipher what someone meant is powerful but potentially dange
     # ok: anonymous hash
     fuzzy_one({x => 1, y => "hi", z => "eh"}); 
     
-    # ERROR: raw key/value pairs in a list
+    # ERROR: raw key/value pairs in a list are
+    #        rejected when fuzzy=1
     fuzzy_one(x => 1, y => "hi", z => "eh");   
 
     sub fuzzy_two
