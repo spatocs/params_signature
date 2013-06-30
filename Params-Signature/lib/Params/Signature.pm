@@ -263,15 +263,48 @@ sub check
 
     (wantarray ? ($type_passed, $value, $msg, $tc) : $type_passed);
 }
+    # get signature info
+sub _get_signature_info
+{
+    my $signature = $_[1];
+    my $self_ref = ref($_[0]);  # determine how sub was called (obj,class,sub?)
+    my $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ : (($_[0] eq "Params::Signature") ? (shift @_ and $class_default) : $class_default);
+    my $cache_key;
+    my $caller = caller;
+    my $called = "$caller:";
+    my $msg;
+    my $on_fail = \&carp;
+    my $ok;
+    my $signature_info;
+    $cache_key = $caller . join("$FIELD_SEPARATOR", @{$signature});
+    if (exists($self->{cache}{$cache_key}))
+    {
 
-#spec("Str name!",  "Str alias < name", "ArrayRef options = []", "HashRef h = { call_a_sub }", "CustomRelationType relation = '1-N'", "Str other ~ /[a-z]/")
+        #_print_debug("Use cache key: $cache_key");
+        $signature_info = $self->{cache}{$cache_key};
+    }
+    else
+    {
+        ($signature_info, $ok, $msg) =
+        $self->_build_signature_info($signature, $caller);
+        if (!$ok)
+        {
+            $on_fail->("$called $msg");
+            return;
+        }
+        $self->{cache}{$cache_key} = $signature_info;
+    }
+    return $signature_info;
+}
+
+#spec("Str name!",  "Str alias < name", "ArrayRef options = []", "HashRef h = { call_a_sub }", "CustomRelationType relation = '1-N'")
 
 # @types = [
 #    { 
 #         type => 'ArrayRef',
 #         tc_name => 'DefinedInPackage::ArrayRef',
 #         tc => $tc,
-#         check => $check_sub,    # for Moose and Mouse, may need to sub { $tc->check($_[0]) }, Type::Tiny save ref to compiled_check
+#         check => $check_sub,    # for Moose and Mouse, sub { $tc->check($_[0]) }, Type::Tiny save ref to compiled_check
 #         has_coercion => [0|1],  # WARNING: $tc checked only once, when signature is compiled
 #         coerce => $coerce_sub,
 #    }
@@ -283,8 +316,8 @@ sub _build_signature_info
     my $caller  = $_[1];
     my $arg;
     my @parts;
-    my @aliases;
     my $alias;
+    my @aliases;
     my $type;
     my $name;
     my $optional;
@@ -353,6 +386,8 @@ sub _build_signature_info
             $signature_info{positional_cutoff} = $idx;
         }
 
+        # TODO: ambiguous names (no sigils) are not caught
+        #       fields are assumed 'named' if any preceding field is named
         if ((index($name, "\$") == 0) &&
             (exists($signature_info{positional_cutoff})))
         {
@@ -365,14 +400,24 @@ sub _build_signature_info
 
         $name =~ s/([\!\?])$//;
         $flag = $1;
+        $spec->{has_alias} = 0;
+        if ($name =~ /[:\$\!\?\{\}]/)
+        {
+            $ok = 0;
+            $msg =
+            "Invalid character(s) in '$name'";
+            last;
+        }
         if (index($name, "|") != -1)
         {
-            @aliases = split(/\|/, $name);
-            $name = $aliases[0];
+            $spec->{has_alias} = 1;
+            my @aliases = split(/\|/, $name);
+            $name = shift @aliases;
             foreach $alias (@aliases)
             {
                 $signature_info{map}{$alias} = $spec;
             }
+            $spec->{aliases} = \@aliases;
         }
 
         # only actual argument specifications get processed below
@@ -591,19 +636,12 @@ sub _build_signature_info
         }
     }
 
-    # should validate_pos just produce a hash for validate_hash
-    # or generate a complete sub?  what about mixed?
-    # perhaps validate_pos should make a complete validation sub
-    # and then mixed can be validated using 2 calls?
-    # need to handle "depends" fields that are named but parent is positional
-    # ... maybe everything should be validated in one ugly sub
-    #$signature_info{validate_pos} = $self->_build_validate_pos_sub($signature_info);
-    #$signature_info{validate_hash} = $self->_build_validate_hash_sub($signature_info);
+    # produce a somewhat optimized validation sub just for this signature
+    $signature_info{validate_sub} = $self->_generate_validate_sub(\%signature_info);
 
     #_print_debug("done: sub _build_signature_info");
     return (\%signature_info, $ok, $msg);
 }
-
 
 
 # called as: validate(\@_, [ spec ], { cfg });
@@ -626,7 +664,7 @@ sub validate
     # args = parameters passed to caller
     my $self_ref = ref($_[0]);  # determine how sub was called (obj,class,sub?)
     my $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ : (($_[0] eq "Params::Signature") ? (shift @_ and $class_default) : $class_default);
-    my ($cache_key, $signature_info, $on_fail, $param_style, $caller, $check_only, $coerce, $ok, $msg, $called, $arg_hash, $max, $idx, $signature_spec, $arg_count, @check_fields, $field, $type_passed, $tc, $type, $spec, $value, $fuzzy, %name_lookup, $key, $normalize_keys, $args, $signature, $cfg, @depends_fields, @extra_fields, $extra_ok, $name_regex, $nr2);
+    my ($cache_key, $signature_info, $on_fail, $param_style, $caller, $check_only, $coerce, $ok, $msg, $called, $arg_hash, $max, $idx, $signature_spec, $arg_count, $field, $type_passed, $tc, $type, $spec, $value, $fuzzy, %name_lookup, $key, $normalize_keys, $args, $signature, $cfg, @depends_fields, @extra_fields, $extra_ok, $name_regex, $nr2);
 
     # validate params
     if (ref($_[0]) ne "ARRAY") { $self->{on_fail}->("$self->{called} Invalid argument list: expected array reference"); return; }
@@ -634,22 +672,19 @@ sub validate
     if ($_[2] && ref($_[2]) ne "HASH") { $self->{on_fail}->("$self->{called} Invalid validation options: expected hash reference"); return; }
     ($args, $signature, $cfg) = ($_[0], $_[1], ($_[2] || {}));
 
-    # get config values from $_[2] or self
     $fuzzy = $cfg->{fuzzy} || $self->{fuzzy} || 0;
     $on_fail = $cfg->{on_fail} || $self->{on_fail};
     $normalize_keys = $cfg->{normalize_keys} || $self->{normalize_keys};
     $caller = $cfg->{caller} || $self->{caller} || caller;
     $called = $cfg->{called} || $self->{called} || $caller;
-    $coerce    = (exists($cfg->{coerce})) ? $cfg->{coerce} : $self->{coerce} ;
     $arg_hash = {};
     $arg_count = scalar @{$args};
 
     # get signature info
-    $cache_key = join("$FIELD_SEPARATOR", @{$signature});
+    $cache_key = $caller . join("$FIELD_SEPARATOR", @{$signature});
     if (exists($self->{cache}{$cache_key}))
     {
 
-        #_print_debug("Use cache key: $cache_key");
         $signature_info = $self->{cache}{$cache_key};
     }
     else
@@ -663,22 +698,15 @@ sub validate
         }
         $self->{cache}{$cache_key} = $signature_info;
     }
+    $param_style = $cfg->{param_style} || $signature_info->{param_style} || $self->{param_style};
     $extra_ok = (exists($signature_info->{extra_cutoff}));
     $signature_spec = $signature_info->{signature_spec};
-    @check_fields = @{$signature_info->{required_names}};
-    $param_style = $cfg->{param_style} || $signature_info->{param_style} || $self->{param_style};
 
-    # assume it's a list of key/value pairs if at least one
-    # field name exists as a key in the hash
-
-    # * the m?regex? construct stops matching after the first match
-    #   is found (speed up grep) ... BUT using m?? causes seg faults
-    #   from time to time (double free of search term?) ...
-    #   perhaps calling a sub might be faster than grep-ing all values?
     # * smartmatch operator would work but only in perl 5.10+
+    #   so we do it the "old fashioned way"
     $ok = 0;
-    if ($fuzzy == 1 &&
-        $param_style ne $NAMED &&
+    if ((($param_style eq $NAMED) ||
+            ($fuzzy == 1 && $param_style ne $NAMED)) &&
         $arg_count == 1 &&
         ref($args->[0]) eq "HASH")
     {
@@ -686,62 +714,183 @@ sub validate
         {
             foreach $field (keys %{$args->[0]})
             {
+                # save copy because normalize_keys may alter its arg
+                $key = $field;
                 $field = $normalize_keys->($field);
-                if (exists($signature_info->{map}{$field}))
+                if ($spec = $signature_info->{map}{$field})
                 {
+                    $arg_hash->{$field} = $args->[0]->{$key};
                     $ok = 1;
+                }
+                elsif (!$extra_ok)
+                {
+                    # this field doesn't belong in a named arg hash, so
+                    # this hash should not be treated as a list of named args
+                    if ($param_style eq $NAMED)
+                    {
+                        # args MUST be named parameters, so the fact that
+                        # $field is not valid indicates invalid args
+                        $on_fail->("$called Found unexpected named parameter: $field");
+                        $ok = 0;
+                        return;
+                    }
+                    # process (as positional?) below
+                    $arg_hash = {};
+                    $ok = 0;
                     last;
+                }
+                else
+                {
+                    # extra field
+                    $arg_hash->{$field} = $args->[0]->{$key};
+                    $ok = 1;
                 }
             }
         }
         else
         {
-            $ok = grep {m/$signature_info->{name_regex}/} (keys %{$args->[0]});
-        }
-	if ($ok)
-	{
-	    $param_style = $NAMED;
-	}
-    }
-    if ($fuzzy == 2 &&
-        (!$ok) &&
-        ($arg_count % 2 == 0))
-    {
-	local $| = 0; # localize for magical key name extraction
-
-        if ($normalize_keys)
-        {
-            foreach $field ((grep --$|, @$args))
+            foreach $field (keys %{$args->[0]})
             {
-                $field = $normalize_keys->($field);
-                if (exists($signature_info->{map}{$field}))
+                if ($spec = $signature_info->{map}{$field})
                 {
+                    # found a valid field name, so move on
+                    #my %new_h = %{$args->[0]};
+                    #$arg_hash = \%new_h;
+		    # WARNING: modifying parameter for the sake of speed
+		    $arg_hash = $args->[0];
                     $ok = 1;
                     last;
                 }
+                elsif (!$extra_ok)
+                {
+                    # this field doesn't belong in a named arg hash, so
+                    # this hash should not be treated as a list of named args
+                    if ($param_style eq $NAMED)
+                    {
+                        # args MUST be named parameters, so the fact that
+                        # $field is not valid indicates invalid args
+                        $on_fail->("$called Found unexpected named parameter: $field");
+                        $ok = 0;
+                        return;
+                    }
+                    # process (as positional?) below
+                    $arg_hash = {};
+                    $ok = 0;
+                    last;
+                }
+                else
+                {
+                    # extra field ... handle degenerate case when only
+                    # "..." is set in signature
+                    $arg_hash->{$field} = $args->[0]->{$field};
+                    $ok = 1;
+                }
             }
-        }
-        else
-        {
-	    # the  "grep --$|" magically selects every other element in @$args
-	    # starting at 0, thus producing a list of what should be field names
-	    # grep then looks at list of field names for at least 1 field name
-            $ok = grep {m/$signature_info->{name_regex}/} (grep --$|, @$args);
         }
         if ($ok)
         {
-            my %h = @$args;
             $param_style = $NAMED;
-            $args = [ \%h ];
+        }
+    }
+    if (
+        (($param_style eq $NAMED) &&
+            (!$ok) &&
+            ($arg_count % 2 == 0))
+            ||
+        ($param_style eq $MIXED)
+            ||
+        (($fuzzy == 2 && $param_style ne $NAMED) &&
+            (!$ok) &&
+            ($arg_count % 2 == 0))
+        )
+    {
+        my %h;
+        if ($param_style eq $MIXED)
+        {
+            %h = %{$args->[$signature_info->{positional_cutoff}]};
+        }
+        else
+        {
+            %h = @$args;
+        }
+
+        if ($normalize_keys)
+        {
+            foreach $field (keys %h)
+            {
+                # save copy because normalize_keys will alter its arg
+                $key = $field;
+                $field = $normalize_keys->($field);
+                if ($spec = $signature_info->{map}{$field})
+                {
+                    $arg_hash->{$field} = $h{$key};
+                    $ok = 1;
+                }
+                elsif (!$extra_ok)
+                {
+                    # this field doesn't belong in a named arg hash, so
+                    # this hash should not be treated as a list of named args
+                    if (($param_style eq $NAMED) || ($param_style eq $MIXED))
+                    {
+                        # args MUST be named parameters, so the fact that
+                        # $field is not valid indicates invalid args
+                        $on_fail->("$called Found unexpected named parameter: $field");
+                        $ok = 0;
+                        return;
+                    }
+                    $arg_hash = {};
+                    $ok = 0;
+                    last;
+                }
+                else
+                {
+                    $arg_hash->{$field} = $h{$key};
+                    $ok = 1;
+                }
+            }
+        }
+        else
+        {
+            foreach $field (keys %h)
+            {
+                if ($spec = $signature_info->{map}{$field})
+                {
+                    $arg_hash = \%h;
+                    $ok = 1;
+                    last;
+                }
+                elsif (!$extra_ok)
+                {
+                    # this field doesn't belong in a named arg hash or
+                    # in the "mixed" hash
+                    if (($param_style eq $NAMED) || ($param_style eq $MIXED))
+                    {
+                        # args MUST be named parameters, so the fact that
+                        # $field is not valid indicates invalid args
+                        $on_fail->("$called Found unexpected named parameter: $field");
+                        $ok = 0;
+                        return;
+                    }
+                    # process args as positional below
+                    $arg_hash = {};
+                    $ok = 0;
+                    last;
+                }
+                else
+                {
+                    $arg_hash->{$field} = $h{$field};
+                    $ok = 1;
+                }
+            }
+        }
+        if ($ok && $param_style ne $MIXED)
+        {
+            $param_style = $NAMED;
         }
     }
 
-    #
-    # if param_style is positional or mixed,
-    #     put raw positional arg value in arg_hash
     if (($param_style eq $POSITIONAL) || ($param_style eq $MIXED))
     {
-        # process args until we reach a cutoff marker or the end
         if ($arg_count > $signature_info->{signature_param_count} &&
             (!$extra_ok))
         {
@@ -749,13 +898,15 @@ sub validate
             return;
         }
 
+        # ... now process args until we reach a cutoff marker or the end
+
         # ["Int one", "Int two?", "named:", "..."]
         # foo(1);
         # foo(1,2);
-        # foo(1,2,3); # 3 should be a named param
+        # foo(1,2,3); # 3 should be a named, extra param
         $max = $arg_count;
 	# skip extra params after extra_cutoff
-        $max = (!exists($signature_info->{extra_cutoff}) || $max < $signature_info->{extra_cutoff}) ? $max : $signature_info->{extra_cutoff};
+        $max = (!$extra_ok || $max < $signature_info->{extra_cutoff}) ? $max : $signature_info->{extra_cutoff};
 	# skip anything past positional cutoff
         $max = (!exists($signature_info->{positional_cutoff}) || $max < $signature_info->{positional_cutoff}) ? $max : $signature_info->{positional_cutoff};
 
@@ -763,178 +914,199 @@ sub validate
         # name in the signature specification
         for ($idx = 0; $idx < $max; $idx++)
         {
-            $spec  = $signature_spec->[$idx];
-            $field = $spec->{name};
-            if (!exists($arg_hash->{$field}))
+            if ($spec = $signature_spec->[$idx])
             {
+                $field = $spec->{name};
                 $arg_hash->{$field} = $args->[$idx];
-                if ($spec->{optional})
+            }
+        }
+        if ($extra_ok && ($param_style eq $POSITIONAL))
+        {
+            for ($idx = $signature_info->{extra_cutoff}; $idx < $arg_count; $idx++)
+            {
+                push(@extra_fields, "p_$idx");
+                $arg_hash->{"p_$idx"} = $args->[$idx];
+            }
+        }
+    }
+
+    $ok = $signature_info->{validate_sub}->($self, $args, $arg_hash, $signature_info, $cfg, $caller);
+    if (!$ok)
+    {
+        # on_fail should have been called inside validate_sub
+        return;
+    }
+
+    # if extra fields are not allowed, check if we have any
+    if (!$extra_ok)
+    {
+        foreach $key (keys %{$arg_hash})
+        {
+            if (!exists($signature_info->{map}{$key}))
+            {
+                $on_fail->("$called Encountered unexpected extra parameter: $key");
+                return;
+            }
+        }
+    }
+
+
+    if (wantarray)
+    {
+        if ($extra_ok)
+        {
+            foreach $key (keys %{$arg_hash})
+            {
+                if (!exists($signature_info->{map}{$key}))
                 {
-                    push(@check_fields, $field);
-                    if ($spec->{depends})
-                    {
-                        push(@depends_fields, @{$spec->{depends}});
-                    }
+                    push(@extra_fields, $key);
                 }
             }
         }
-        if ($param_style eq $MIXED) { $args = $args->[$idx]; }
+
+        # building this list is slower than returning arg_hash;
+        # building a list of fields "as we go" took too much time in previous
+        # version of this sub, so we make @extra_fields at the last
+        # minute (if it's actually needed) ...
+        # if you want a list, I guess you have to take the performance hit
+        return map { $arg_hash->{$_} } (@{$signature_info->{all_names}}, @extra_fields);
+
     }
     else
     {
-        # NAMED style always gets hash from args->[0]
-        if (!$args->[0])
-        {
-            # needed for "missing" required fields with defaults
-            $args = [{}];
-        }
-        elsif (ref($args->[0]) ne "HASH")
-        {
-            $on_fail->("$called Failed to locate named parameters");
-            return;
-        }
-	$args = $args->[0];
+        return $arg_hash;
     }
+}
 
-    # if mixed, merge mixed HASH into arg_hash
-    if ((($param_style eq $NAMED) || ($param_style eq $MIXED)) && (ref($args) eq "HASH"))
+sub _generate_validate_sub
+{
+    my ($self, $signature_info) = @_;
+    my $sub;
+    my $s;
+    my $chunk;
+    my $idx;
+    my $max = $signature_info->{arg_count};
+    my $field;
+    my $spec;
+
+    $sub = <<'EOT'
+        my ($self, $args, $arg_hash, $signature_info, $cfg, $caller) = @_;
+        my $coerce   = (exists($cfg->{coerce})) ? $cfg->{coerce} : $self->{coerce} ;
+        my $called   = (exists($cfg->{called})) ? $cfg->{called} : $self->{called} ;
+        my $on_fail   = (exists($cfg->{on_fail})) ? $cfg->{on_fail} : $self->{on_fail} ;
+        my (
+        $value,
+        $spec,
+        $field,
+        $type_passed,
+        $type,
+        $tc,
+        $tc_name
+        );
+
+        my $signature_spec = $signature_info->{signature_spec};
+        $type_passed = 1;
+EOT
+;
+
+    for ($idx = 0; $idx < $max; $idx++)
     {
-        if ($normalize_keys)
-        {
-            #my $map = $signature_info->{map};
-            foreach $key (keys %{$args})
-            {
-                # normalize_keys may change the value passed to it
-                # so $key should not be passed to it
-                $field = $key;
-                $field = $normalize_keys->($field);
-                $spec  = $signature_info->{map}{$field};
-                if (!$spec)
-                {
-                    if ($extra_ok)
-                    {
-                        push(@extra_fields, $field);
-                        $arg_hash->{$field} = $args->{$key};
-                        next;
-                    }
-                    else
-                    {
-                        $on_fail->("$called Encountered unexpected extra parameter: $key");
-                        return;
-                    }
-                }
-                
-                $field = $spec->{name};
-                if (!exists($arg_hash->{$field}))
-                {
-                    $arg_hash->{$field} = $args->{$key};
-                    if ($spec->{optional})
-                    {
-                        push(@check_fields, $field);
-                        if ($spec->{depends})
-                        {
-                            push(@depends_fields, @{$spec->{depends}});
-                        }
-                    }
-                }
-            }
-        }
-        else
-        {
-            foreach $key (keys %{$args})
-            {
-                # $key might be an alias, so use canonical field name
-                $spec  = $signature_info->{map}{$key};
-                if (!$spec)
-                {
-                    if ($extra_ok)
-                    {
-                        push(@extra_fields, $key);
-                        $arg_hash->{$key} = $args->{$key};
-                        next;
-                    }
-                    else
-                    {
-                        $on_fail->("$called Encountered unexpected extra parameter: $key");
-                        return;
-                    }
-                }
-                $field = $spec->{name};
-                if (!exists($arg_hash->{$field}))
-                {
-                    $arg_hash->{$field} = $args->{$key};
-                    if ($spec->{optional})
-                    {
-                        push(@check_fields, $field);
-                        if ($spec->{depends})
-                        {
-                            push(@depends_fields, @{$spec->{depends}});
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    foreach $key (@depends_fields)
-    {
-        # only adding to check_fields if optional
-        # field doesn't exist in arg_hash already
-        # (and handling alias in @depends_fields)
-        $spec  = $signature_info->{map}{$key};
+        $spec = $signature_info->{signature_spec}->[$idx];
         $field = $spec->{name};
-        if (!defined($arg_hash->{$field}))
-        {
-            $arg_hash->{$field} = undef;
-            push(@check_fields, $field);
-        }
-    }
+        $chunk = "";
+        # %idx% = $idx
+        # %field% = $field
 
-    # for each field in signature
-    foreach $field (@check_fields)
-    {
-        # validate arg (assign default, check value, coerce&check)
-        $spec            = $signature_info->{map}{$field};
-        $value           = $arg_hash->{$field};
-        if (!defined($value) && defined($spec->{default_type}))
+        if ($spec->{has_alias})
         {
+            foreach my $alias (@{$spec->{aliases}})
+            {
+                $chunk .= "if (exists(\$arg_hash->{'$alias'})) { \$arg_hash->{%field%} = delete \$arg_hash->{'$alias'}; }";
+            }
+        }
+
+        if ($spec->{optional})
+        {
+            $chunk .= 'if (exists($arg_hash->{%field%})) {';
+        }
+        $chunk .= <<'EOC'
+
+        # validate arg (assign default, check value, coerce&check)
+        $spec            = $signature_info->{signature_spec}->[%idx%];
+        $value           = $arg_hash->{%field%};
+        $field           = $spec->{name};
+EOC
+;
+        if (defined($spec->{default_type}) && $spec->{default_type} != $ASSIGN_NONE)
+        {
+            $chunk .= 'if (!defined($value)) { ';
             if ($spec->{default_type} == $ASSIGN_LITERAL)
             {
-                $value = $spec->{default};
+                $chunk .= '$arg_hash->{%field%} = $value = $spec->{default};}';
             }
             elsif ($spec->{default_type} == $ASSIGN_SUB)
             {
-                $value = $spec->{default}->();
+                $chunk .= '$arg_hash->{%field%} = $value = $spec->{default}->();}';
             }
             elsif ($spec->{default_type} == $ASSIGN_PARAM)
             {
-                $value      = $arg_hash->{$spec->{default}};
+                $chunk .= '$arg_hash->{%field%} = $value      = $arg_hash->{$spec->{default}};}';
+            }
+            else
+            {
+                # should not happen!
+                $chunk = "} ";
             }
         }
 
+        $chunk .= <<'EOC'
         foreach $type (@{$spec->{types}})
         {
             $type_passed = $$type->{check}->($value);
-            $tc = $$type->{tc};
-            #if ($type_passed) { last; }
+            #$tc = $$type->{tc};
+            if ($type_passed) { last; }
 
             if (!$type_passed && $$type->{'has_coercion'} && $coerce)
             {
                 $value = $$type->{tc}->coerce($value);
                 $type_passed = $$type->{check}->($value);
+                if ($type_passed)
+                {
+                    $arg_hash->{%field%} = $value;
+                    last;
+                }
             }
-            if ($type_passed) { last; }
         }
+
         if (!$type_passed)
         {
             if (!defined($value)) { $value = 'undef'; }
-            $on_fail->("$called $field failed validation. Expected $spec->{type}, got $value");
+            $on_fail->("$called %field% failed validation. Expected $spec->{type}, got $value");
             return;
         }
+EOC
+        ;
+
+        if ($spec->{depends})
+        {
+            foreach $field (@{$spec->{depends}})
+            {
+            $chunk .= <<"EOC"
+                # set to undef to force validation later
+                if (!exists(\$arg_hash->{$field}))
+                {
+                    \$arg_hash->{$field} = undef;
+                }
+EOC
+        ;
+            }
+        }
+
+        $chunk .= <<'EOC'
         #     if field has callbacks, run each callback(value, arg_hash)
         if ($cfg->{callbacks})
         {
-            my $cbs = $cfg->{callbacks}->{$spec->{name}};
+            my $cbs = $cfg->{callbacks}->{%field%};
 
             #_print_debug("Callbacks for $spec->{name}:", Dumper($cbs));
             foreach my $c (keys(%{$cbs}))
@@ -944,43 +1116,33 @@ sub validate
                 $type_passed = $cbs->{$c}->($value, $args, $arg_hash);
                 if (!$type_passed)
                 {
-                    $on_fail->("$called $field failed validation via callback '$c'");
+                    $on_fail->("$called %field% failed validation via callback '$c'");
                     last;
                 }
             }
         }
-        #     store validated/coerced value in arg_hash
-        $arg_hash->{$field} = $value;
-    }
-
-    # add "extra" positional values, extra named
-    # parameters are already in arg_hash
-    if ($extra_ok)
-    {
-        if ($param_style eq $POSITIONAL)
+EOC
+;
+        if ($spec->{optional})
         {
-            for ($idx = $signature_info->{extra_cutoff}; $idx < $arg_count; $idx++)
-            {
-                $arg_hash->{"p_$idx"} = $args->[$idx];
-                push(@extra_fields, "p_$idx");
-            }
+            $chunk .= "}\n";
         }
-    }
-    if (wantarray)
-    {
-        # building this list is slower than returning arg_hash and
-        # keeping @check_fields "right" by inserting undef's for
-        # missing optional values took too much time in previous
-        # version of this sub ... if you want a list, I guess you
-        # have to take the performance hit
-        return map { $arg_hash->{$_} } (@{$signature_info->{all_names}}, @extra_fields);
+        $chunk =~ s/%field%/'$field'/g;
+        $chunk =~ s/%idx%/$idx/g;
+        $sub .= $chunk;
 
     }
-    else
-    {
-        return $arg_hash;
-    }
+
+    $sub .= ' return $type_passed;';
+
+    #print STDERR $sub;
+
+    $s = eval "sub { $sub }"; if ($@) { print STDERR "uh-oh=$@\n"; }
+    return $s;
 }
+
+
+
 
 sub _print_debug
 {
@@ -1109,7 +1271,7 @@ All functionality is accessed via methods.  You can use class methods (C<Params:
 
 B<param_style>: Parameter style is one of "positional", "named" or "mixed".  The actual signature passed to L</"validate"> may override the default set in the new signature object.  The default value in the object is used when the actual subroutine signature lacks sufficient information to determine the parameter style.
 
-B<fuzzy>: Allow the L</"validate"> method to use 'fuzzy logic' to determine the parameter passing style used to invoke the caller.  Enable this if you want to be able to call a subroutine with either positional parameters or key/value pairs that match the subroutine signature.  When using named parameters, values should be passed as a hash.  However, "raw" key/value pairs in @_ are supported but are generally not considered a good practice.  If raw key/value pairs are used, the list must be balanced (it must have an even number of values) and the fuzzy logic confirms that at least one parameter name from the signature appears in an even-numbered element.
+B<fuzzy>: Allow the L</"validate"> method to use 'fuzzy logic' to determine the parameter passing style used to invoke the caller.  Enable this if you want to be able to call a subroutine with either positional parameters or key/value pairs that match the subroutine signature.  When using named parameters, values should be passed as a hash.  However, "raw" key/value pairs in @_ are supported but are generally not considered a good practice.  If raw key/value pairs are used, the list must be balanced (it must have an even number of values). The fuzzy logic confirms that at least one parameter name from the signature appears as a key (however the key is found). 
 
 =over
 
@@ -1127,7 +1289,7 @@ Fuzzy parameter checking is enabled, but named parameters MUST be passed in a ha
 
 =item 2
 
-Fuzzy parameter checking is enabled, so named parameters MAY be passed in a hash at C<$_[0]> OR as raw key/value pairs.  If a hash is used, the rules for "fuzzy=1" are used.  Raw values must be "balanced" (an even number).  The raw values are treated as the key/value pairs of a hash.  At least 1 parameter name from the signature must exist in this hash, otherwise the parameters are not given any special treatment.  This form is potentially dangerous because it can be ambiguous.  You've been warned.
+Fuzzy parameter checking is enabled, so named parameters MAY be passed in a hash at C<$_[0]> OR as raw key/value pairs.  If a hash is used, the rules for "fuzzy=1" are used.  Raw key/values must be "balanced" (an even number) in order to be treated as the key/value pairs of a hash.  At least 1 parameter name from the signature must exist in this hash, otherwise the parameters are not given any special treatment.  This form is potentially dangerous because it can be ambiguous.  You've been warned.
 
 =cut
 
@@ -1314,7 +1476,7 @@ B<caller>: The name of the module or application that called validate.  It is th
 
 B<on_fail>: Override Carp::confess as the subroutine that gets called when a failure occurs.
 
-B<callbacks>: A hash for fine-grained testing of values which goes beyond type checking.  The hash keys match the parameter names in the signature.  The value of each key is a hash of test names and subroutine references.  This allows per-parameter validation callback routines.  The callback routine receives 3 parameters - the parameter value, the original values passed to the validate method, a hash containing a list of values that have already been validated.  Note that required values in the hash are validated in order of appearance in the signature. The hash is ultimately returned to the caller, if validate is called in scalar context.
+B<callbacks>: A hash for fine-grained testing of values which goes beyond type checking.  The hash keys match the parameter names in the signature.  The value of each key is a hash of test names and subroutine references.  This allows per-parameter validation callback routines.  The callback routine receives 3 parameters - the parameter value, the original values passed to the C<validate> method, a hash containing a list of values that have already been validated or will be validated.  Note that values in the third parameter are validated in order of appearance in the signature. The hash is ultimately returned to the caller, if C<validate> is called in scalar context.  As a result, values can be inserted into the hash for eventual use by the caller.
 
 B<Return Value>:
 
