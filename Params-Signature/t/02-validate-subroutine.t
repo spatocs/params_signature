@@ -273,10 +273,16 @@ my @test_criteria = (
      args      => [1, 2, 3, 4],
      signature => ["named:", "Int one", "Int two", "Int three", "Int four"],
      ok        => 0,
-     msg_regex => "locate named parameter"
+     msg_regex => "unexpected named parameter"
     },
     {
-     name => "Named: 3 required",
+     name => "Named: 3 required, as key/value pairs",
+     args => [one => 1, two => 2, three => 3],
+     signature => ["named:", "Int one", "Int two", "Int three"],
+     ok        => 1
+    },
+    {
+     name => "Named: 3 required, as hash",
      args => [{one => 1, two => 2, three => 3}],
      signature => ["named:", "Int one", "Int two", "Int three"],
      ok        => 1
@@ -297,14 +303,23 @@ my @test_criteria = (
     },
 
     {
-     name => "Named: 2 optional set",
+     name => "Named: 2 optional set, as hash",
      args => [{one => 1, two => 2}],
+     signature => ["named:", "Int one?", "Int two?",],
+     ok        => 1
+    },
+    {
+     name => "Named: 2 optional set, as key/value pairs",
+     args => [one => 1, two => 2],
      signature => ["named:", "Int one?", "Int two?",],
      ok        => 1
     },
 
     {name => "Named: 0 of 2 optional set", args => [], signature => ["named:", "Int one?", "Int two?",], ok => 1},
-    {name => "Named: 1 of 2 optional set", args => [{two => 2}], signature => ["named:", "Int one?", "Int two?",], ok => 1},
+    {name => "Named: 1 of 2 optional set, as hash", args => [{two => 2}], signature => ["named:", "Int one?", "Int two?",], ok => 1},
+
+    {name => "Named: 1 of 2 optional set, as key/value pairs", args => [two => 2], signature => ["named:", "Int one?", "Int two?",], ok => 1},
+
     {
      name      => "Named: 3 required, not set, with default",
      args      => [],
@@ -330,7 +345,7 @@ my @test_criteria = (
      args      => [],
      signature => ["named:", "Int one = 'one'", "Int two = 'two'", "Int three = 'three'"],
      ok        => 0,
-     msg_regex => 'one failed validation'
+     msg_regex => '\'one\' failed validation'
     },
     {
      name      => "Named: 3 optional, 1 set, 2 depends fields with defaults",
@@ -341,6 +356,13 @@ my @test_criteria = (
     {
      name        => "Named: 3 optional, 1 set, 1 depends field with default",
      args        => [{one => 1}],
+     signature   => ["named:", "Int one? << [three]", "Int two? = 2", "Int three? = 3"],
+     ok          => 1,
+     hash_answer => {one => 1, three => 3}
+    },
+    {
+     name        => "Named: 3 optional, 1 set, 1 depends field with default, as key/value pairs",
+     args        => [one => 1],
      signature   => ["named:", "Int one? << [three]", "Int two? = 2", "Int three? = 3"],
      ok          => 1,
      hash_answer => {one => 1, three => 3}
@@ -526,11 +548,29 @@ my @test_fuzzy_criteria = (
      msg_regex => "unexpected extra parameter.s."
     },
     {
+     # ** should fail because 'oops' is not a valid field ... 2 reasons:
+     # * if 'oops' is first key found, it's clear that hash 
+     #   does not contain named parameters (despite presence of 'two');
+     #   hash will be treated as value for 'one'
+     # * if 'two' is found first, hash is processed as named parameters, but
+     #   fails because extra field is not allowed
      name => "fuzzy Named: 2 optional, 1 present, 1 unknown param in hash",
      args => [{two => 2, oops => 3}],
      signature => ["Int one?", "Int two?"],
      ok        => 0,
-     msg_regex => "unexpected extra parameter: oops"
+    },
+    {
+     # ** should fail because 'oops' is not a valid field ... 2 reasons:
+     # * if 'oops' is first key found, it's clear that hash 
+     #   does not contain named parameters (despite presence of 'two');
+     #   hash will be treated as value for 'one'
+     # * if 'two' is found first, hash is processed as named parameters, but
+     #   fails because extra field is not allowed
+     name => "fuzzy Named: 2 optional, 1 present, extra ok, 1 unknown param in hash",
+     args => [{two => 2, is_ok => 3}],
+     signature => ["Int one?", "Int two?", "..."],
+     ok        => 1,
+     hash_answer => {is_ok => 3, two => 2}
     },
 
     {
@@ -574,6 +614,29 @@ my @test_fuzzy_criteria_std_signature = (
                                           array_answer => [1, 2, 3]
                                          },
                                          );
+my @test_fuzzy2_criteria = (
+
+    {
+     name => "Fuzzy 2 Named: 3 required, as key/value pairs",
+     args => [one => 1, two => 2, three => 3],
+     signature => ["named:", "Int one", "Int two", "Int three"],
+     ok        => 1
+    },
+    {
+     name => "Fuzzy 2 Named: 2 optional set, as key/value pairs",
+     args => [one => 1, two => 2],
+     signature => ["named:", "Int one?", "Int two?",],
+     ok        => 1
+    },
+    {name => "Fuzzy 2 Named: 1 of 2 optional set, as key/value pairs", args => [two => 2], signature => ["named:", "Int one?", "Int two?",], ok => 1},
+    {
+     name        => "Fuzzy 2 Named: 3 optional, 1 set, 1 depends field with default, as key/value pairs",
+     args        => [one => 1],
+     signature   => ["named:", "Int one? << [three]", "Int two? = 2", "Int three? = 3"],
+     ok          => 1,
+     hash_answer => {one => 1, three => 3}
+    },
+);
 
 plan tests => (scalar @test_criteria * 2) + (scalar @test_fuzzy_criteria) + (scalar @test_fuzzy_criteria_std_signature);
 
