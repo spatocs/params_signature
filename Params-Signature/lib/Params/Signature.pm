@@ -1180,12 +1180,9 @@ Params::Signature - support for parameter validation based on a subroutine signa
 
 =head1 VERSION
 
-Version 0.01
+Version 0.04
 
 =cut
-
-our $VERSION = '0.01';
-
 
 =head1 SYNOPSIS
 

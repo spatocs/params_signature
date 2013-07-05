@@ -151,14 +151,15 @@ sub dispatch
 #                   ]
 #                   );
 # $multi->resolve(params => \@_,
-#                 param_style => "positional|named|mixed",
 #                 signatures => [
 #                       #implicit id of "0"
 #                       { signature => ["Int one", "Str two"] },
 #                       #implicit id of "1"
 #                       { signature => ["Str one", "Str two", "Str three"] },
 #                   ],
-#                  config => { on_fail => \&call_me}
+#                  { on_fail => \&call_me,
+#                    param_style => "positional|named|mixed",
+#                  }
 #                   );
 sub resolve
 {
