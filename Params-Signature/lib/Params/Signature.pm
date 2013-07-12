@@ -807,7 +807,19 @@ sub validate
         my %h;
         if ($param_style eq $MIXED)
         {
-            %h = %{$args->[$signature_info->{positional_cutoff}]};
+            if (ref($args->[$signature_info->{positional_cutoff}]))
+            {
+                %h = %{$args->[$signature_info->{positional_cutoff}]}
+            }
+            else
+            {
+                # handle ["Int pos", "Str :name_it"]
+                # foo(123, name_it => "hey");
+                # NOTE: name_it is not inside a hash
+                my $end = $#{$args};
+                %h = @$args[$signature_info->{positional_cutoff}..$end];
+                $arg_count = $signature_info->{positional_cutoff} + scalar keys(%h);
+            }
         }
         else
         {

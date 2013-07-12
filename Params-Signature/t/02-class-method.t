@@ -157,6 +157,14 @@ my @test_criteria = (
     },
 
     {
+     name         => "Mixed: 2 required, 2 set, no default, no hash",
+     args         => [1, two => 2],
+     signature    => ["Int one", "named:", "Int two"],
+     ok           => 1,
+     array_answer => [1, 2]
+    },
+
+    {
      name         => "Mixed: 2 required, 2 set, no default",
      args         => [1, {two => 2}],
      signature    => ["Int one", "named:", "Int two"],
@@ -197,6 +205,20 @@ my @test_criteria = (
      signature    => ["Int one", "Int two", "named:", "Int three"],
      ok           => 1,
      array_answer => [1, 2, 3]
+    },
+    {
+     name => "Mixed: 4 required, 4 set, 2 pos, 2 named not in hash, no default",
+     args => [1, 2, three => 3, four => 4],
+     signature => ["Int one", "Int two", "named:", "Int three", "Int four"],
+     ok        => 1,
+     hash_answer => {one => 1, two => 2, three => 3, four => 4}
+    },
+    {
+     name => "Mixed: 3 required, 1 optional, 3 set, 2 pos, 1 named not in hash, no default",
+     args => [1, 2, three => 3 ],
+     signature => ["Int one", "Int two", "named:", "Int three", "Int four?"],
+     ok        => 1,
+     hash_answer => {one => 1, two => 2, three => 3}
     },
     {
      name => "Mixed: 4 required, 4 set, 2 pos, 2 named in hash, no default",
@@ -716,7 +738,7 @@ sub process_test_criteria
                     if ($criteria->{hash_answer}{$key} ne $answer->{$key})
                     {
                         $failed = 1;
-                        $failed_msg = "Item $key in hash answer ($answer->{$key}) is not the expected value ($criteria->{hash_answer}{$key}";
+                        $failed_msg = "Item $key in hash answer ($answer->{$key}) is not the expected value ($criteria->{hash_answer}{$key})";
                         last;
                     }
                 }
