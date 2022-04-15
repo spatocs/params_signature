@@ -429,7 +429,7 @@ my @test_criteria = (
      args => [{one => 1, two => 2, three => 3, four => 4}],
      signature => ["named:", "Int one", "Int two", "Int three"],
      ok        => 0,
-     msg_regex => "unexpected extra parameter"
+     msg_regex => "unexpected named parameter"
     },
 
     );

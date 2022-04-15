@@ -4,7 +4,7 @@ use strict;
 use Test::More;
 use FileHandle;
 my $fh = new FileHandle;
-use Types::Standard qw(:all);
+use Types::Standard qw(:all Bool FileHandle);
 use Params::Signature;
 my $signature = new Params::Signature(on_fail => sub { });
 
@@ -19,9 +19,11 @@ my @type_tests = (
     ["ArrayRef" => {value => *STDERR,        ok => 0}],
 
     ["Bool" => {value => "0",      ok => 1}],
-    ["Bool" => {value => "123.45", ok => 0}],
+    # this one passes because of coercion
+    ["Bool" => {value => "123.45", ok => 1}],
     ["Bool" => {value => "1",      ok => 1}],
-    ["Bool" => {value => "hi",     ok => 0}],
+    # this one passes because of coercion
+    ["Bool" => {value => "hi",     ok => 1}],
     ["Bool" => {value => "",       ok => 1}],
     ["Bool" => {value => undef,    ok => 1}],
 
@@ -32,7 +34,7 @@ my @type_tests = (
     #["FileHandle" => {value => new FileHandle, ok => 1}],
     ["FileHandle" => {value => $fh, ok => 1}],
     # this test only works with Mouse, not sure why
-    ["FileHandle" => {value => *STDERR,        ok => 0}],
+    ["FileHandle" => {value => *STDERR,        ok => 1}],
 
     ["GlobRef" => {value => *main{GLOB},    ok => 1}],
     #["GlobRef" => {value => new FileHandle, ok => 0}],
