@@ -402,7 +402,7 @@ DESCRIPTION
         # WARNING: ambiguous call! 
         tricky_one("one", "2", "three", "4") 
     
-        # ... in tricky_one, $params = {one => 'two', three => 4}
+        # ... in tricky_one, $params = {one => '2', three => 4}
         # - but -
         # should it actually be:
         #   $params = {one => 'one', two => '2', three => 'three', four => '4'}
@@ -547,7 +547,7 @@ PARAMETER DEFINITION
    Default Value
     If a required parameter is not set, a default value may be assigned to
     it. The default value may be a literal, the value of another parameter
-    or the value returned by a subroutine. Default values are not be
+    or the value returned by a subroutine. Default values are not
     assigned to optional values. However, there is one exception to this
     rule. A default value may be assigned to an optional parameter which
     becomes required when a field it depends on is set (see "Dependents").
@@ -638,8 +638,8 @@ PARAMETER DEFINITION
 
 METHODS
     All functionality is accessed via methods. You can use
-    "Params::Signature-"method()> or construct a module or
-    application-specific Params::Signature object. Class methods may be used
+    "Params::Signature->"method() or an application-specific
+    Params::Signature object. Class methods may be used
     to validate parameters using global settings. By default, parameters are
     positional, fuzzy logic is disabled, and Carp::confess is used to report
     failures. Class methods work just like object methods.
@@ -769,7 +769,7 @@ METHODS
                                     "Int one",
                                     "Int two",
                                     "Int :$named_param",
-                                    "Int :$opt_named",
+                                    "Int :$optional_named?",
                                     "..."
                                 ]
                             );
@@ -781,7 +781,7 @@ METHODS
                                 "Int two",
                                 'named:',
                                 "Int named_param",
-                                "Int opt_named",
+                                "Int optional_named?",
                                 "..."
                                 ],
                         param_style => "mix",
@@ -884,14 +884,14 @@ METHODS
             # get hash in scalar context (and use a perl 6-ish signature)
             my $params = $signature->validate(
                             \_@,
-                            ["Int $one", "Int $two", "Int $three"]
+                            ["Int $one", "Int|Undef $two", "Int $three"]
                             );
             # $params = { one => 1, two => undef, three => 3}
 
             # get a list in list context 
             my @params = $signature->validate(
                                 \_@,
-                                ["Int one", "Int two", "Int three"]
+                                ["Int one", "Int|Undef two", "Int three"]
                                 );
             # @params = [ 1, undef, 3 ]
         }
