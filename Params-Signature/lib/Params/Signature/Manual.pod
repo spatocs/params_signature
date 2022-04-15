@@ -23,7 +23,7 @@ The module borrows ideas from the previously mentioned modules, as well as L<Par
 
 In its simplest form, you simply call Params::Signature's validate method with your subroutine's parameters and a signature specification:
 
-    $params = validate(\@_, ["Str x = 'default'", "Undef|Str y?]);
+    $params = validate(\@_, ["Str x = 'default'", "Undef|Str y?"]);
 
 The signature is a list of parameter definitions.  A basic parameter definition is a string which consists of a type constraint and the name of the parameter.  The actual type constraints are defined via an external module, such as L<Type::Tiny> or L<Moose::Util::TypeConstraints>.  A subroutine reference may also be used as a type constraint.  Parameters are required by default.  A default value may be assigned to a required parameter.  Parameters may be flagged as optional using the optional flag (trailing question mark).
 
@@ -69,7 +69,7 @@ The examples below attempt to demonstrate each of the usage styles along with va
     my $params_hashref = validate(\@_, ["DoesIt doit", "HashRef a_hash"]);
 
     # to magically coerce a hash into a Foo::Bar via validate()
-    coerce "Foo_Bar", from "HashRef", vi { new Foo::Bar(%{$_[0]})});
+    coerce "Foo_Bar", from "HashRef", via { new Foo::Bar(%{$_[0]})});
 
     # * if bar is a HashRef in @_ it will be coerced by validate
     #   into a Foo::Bar object in @params_array
@@ -401,7 +401,7 @@ Using "fuzzy=2" to decipher what someone meant is powerful but potentially dange
     }
 
     # WARNING: ambiguous call! 
-    # ... in tricky_one, $params = {one => 'two', three => 4}
+    # ... in tricky_one, $params = {one => '2', three => 4}
     # - but -
     # should it actually be:
     #   $params = {one => 'one', two => '2', three => 'three', four => '4'}
@@ -550,7 +550,7 @@ A parameter can use one of 3 indicators.  The C<=> (equal sign) is used to assig
 
 =head3 Default Value
 
-If a required parameter is not set, a default value may be assigned to it.  The default value may be a literal, the value of another parameter or the value returned by a subroutine.  Default values are not be assigned to optional values.  However, there is one exception to this rule.  A default value may be assigned to an optional parameter which becomes required when a field it depends on is set (see L</Dependents>).  The "<=" (back arrow) is used to assign the value of another parameter as the default value of an unset parameter.
+If a required parameter is not set, a default value may be assigned to it.  The default value may be a literal, the value of another parameter or the value returned by a subroutine.  Default values are not assigned to optional values.  However, there is one exception to this rule.  A default value may be assigned to an optional parameter which becomes required when a field it depends on is set (see L</Dependents>).  The "<=" (back arrow) is used to assign the value of another parameter as the default value of an unset parameter.
 
     # Assign a literal value as the default
     ["Str login = 'not set'"]
@@ -677,7 +677,7 @@ However, Params::Validate has an advantage if you use the XS version:
      [P:V h/l] 35207/s       98%       59%       47%        6%        --      -17%
      [P:V]     42498/s      138%       91%       77%       28%       21%        --
 
-Pick your poison.  Each module accomplishes the same thing, but in a different way.  Params::Validate does not support type constraints, per se, but is fast.  Data::Validator supports Mouse, but not any other type constraint system.  Both use specifications that are somewhat verbose, in the author's opinion.  Params::Validate attempts to provide most of the features of Params::Validate while supporting any type constraint system, including no type constraints (use sub references instead).  As such, it will work with Type::Tiny, Moo, Mouse and Moose, but does not technically require any of them.  In addition, the signatures used by Params::Signature are somewhat simpler than the specifications used by the other modules (again, in the author's opinion).
+Pick your poison.  Each module accomplishes the same thing, but in a different way.  Params::Validate does not support type constraints, per se, but is fast.  Data::Validator supports Mouse, but not any other type constraint system.  Both use specifications that are somewhat verbose, in the author's opinion.  Params::Signature attempts to provide most of the features of Params::Validate while supporting any type constraint system, including no type constraints (use sub references instead).  As such, it will work with Type::Tiny, Moo, Mouse and Moose, but does not technically require any of them.  In addition, the signatures used by Params::Signature are somewhat simpler than the specifications used by the other modules (again, in the author's opinion).
 
 =head1 LIMITATIONS AND CAVEATS
 
