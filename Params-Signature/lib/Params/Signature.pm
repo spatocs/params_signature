@@ -179,7 +179,9 @@ sub check
       %params,
       );
 
-   $self = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ :
+   $self =
+     ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ?
+     shift @_ :
      (($_[0] eq "Params::Signature") ? (shift @_ and class_default()) : class_default());
 
    # basic support for positional parameters
@@ -287,7 +289,9 @@ sub _get_signature_info
 {
    my $signature = $_[1];
    my $self_ref  = ref($_[0]);    # determine how sub was called (obj,class,sub?)
-   my $self      = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ :
+   my $self =
+     ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ?
+     shift @_ :
      (($_[0] eq "Params::Signature") ? (shift @_ and $class_default) : $class_default);
    my $cache_key;
    my $caller = caller;
@@ -669,19 +673,26 @@ sub _build_signature_info
 sub validate_method
 {
    my $self_ref = ref($_[0]);    # determine how sub was called (obj,class,sub?)
-   my $self     = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ :
+   my $self =
+     ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ?
+     shift @_ :
      (($_[0] eq "Params::Signature") ? (shift @_ and $class_default) : $class_default);
-   my ( $caller_args, $args, $caller_signature, $signature, $cfg, $invocant, $invocant_signature, $invocant_type, $invocant_name, $invocant_passed, @result_list, $result_hash);
+   my (
+      $caller_args,        $args,          $caller_signature, $signature,       $cfg,         $invocant,
+      $invocant_signature, $invocant_type, $invocant_name,    $invocant_passed, @result_list, $result_hash
+      );
 
    # validate params
    # actual params to calling subroutine (\@_ in calling subroutine)
    if (ref($_[0]) ne "ARRAY") { $self->{on_fail}->("$self->{called} Invalid argument list: expected array reference"); return; }
+
    # signature specification
    if (ref($_[1]) ne "ARRAY")
    {
       $self->{on_fail}->("$self->{called} Invalid signature: expected array reference, got " . ref($_[1]));
       return;
    }
+
    # validate cfg options
    if ($_[2] && ref($_[2]) ne "HASH")
    {
@@ -689,12 +700,14 @@ sub validate_method
       return;
    }
    ($caller_args, $caller_signature, $cfg) = ($_[0], $_[1], ($_[2] || {}));
+
    # don't mess with @_ in caller, make our own copy
    push(@{$args}, @{$caller_args});
+
    # don't mess with caller signature, make our own copy
    push(@{$signature}, @{$caller_signature});
 
-   $invocant = shift(@{$args});
+   $invocant           = shift(@{$args});
    $invocant_signature = shift(@{$signature});
    ($invocant_type, $invocant_name) = split(/\s+/, $invocant_signature);
 
@@ -716,13 +729,13 @@ sub validate_method
    {
       @result_list = $self->validate($args, $signature, $cfg);
       unshift(@result_list, $invocant);
-      return(@result_list);
+      return (@result_list);
    }
    else
    {
       $result_hash = $self->validate($args, $signature, $cfg);
       $result_hash->{$invocant_name} = $invocant;
-      return($result_hash);
+      return ($result_hash);
    }
 }
 
@@ -745,7 +758,9 @@ sub validate
    # params = parameters passed to validate
    # args = parameters passed to caller
    my $self_ref = ref($_[0]);    # determine how sub was called (obj,class,sub?)
-   my $self     = ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ? shift @_ :
+   my $self =
+     ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ?
+     shift @_ :
      (($_[0] eq "Params::Signature") ? (shift @_ and $class_default) : $class_default);
    my (
       $cache_key,      $signature_info, $on_fail,     $param_style,    $caller, $check_only, $coerce,
@@ -762,6 +777,7 @@ sub validate
       $self->{on_fail}->("$self->{called} Invalid signature: expected array reference, got " . ref($_[1]));
       return;
    }
+
    # validate cfg options
    if ($_[2] && ref($_[2]) ne "HASH")
    {
@@ -801,8 +817,7 @@ sub validate
    $signature_spec = $signature_info->{signature_spec};
 
    $ok = 0;
-   if ((($param_style eq $NAMED) ||
-         ($fuzzy == $FUZZY_HASH_OK && $param_style ne $NAMED)) &&
+   if ((($param_style eq $NAMED) || ($fuzzy == $FUZZY_HASH_OK && $param_style ne $NAMED)) &&
       ($arg_count == 1) &&
       ref($args->[$arg_hash_index]) eq "HASH")
    {
@@ -855,10 +870,11 @@ sub validate
                #       the original copy, which could have unintended consequences
                my %new_h = %{$args->[$arg_hash_index]};
                $arg_hash = \%new_h;
+
                # WARNING: modifying parameter for the sake of speed
                # ... NOPE! don't do this. it could have bad side effects!
                #$arg_hash = $args->[$arg_hash_index];
-               $ok       = 1;
+               $ok = 1;
                last;
             }
             elsif (!$extra_ok)
@@ -897,13 +913,13 @@ sub validate
    if (
       # supposed to get named args but not using a hash, but it could be raw key/value pairs
       (($param_style eq $NAMED) && (!$ok) && ($arg_count % 2 == 0)) ||
+
       # it's a mix of positional and named args
       ($param_style eq $MIXED) ||
+
       # we're not using a named param style, but it's ok for the app to use raw key/value pairs,
       # which is what we might have
-      (($fuzzy == $FUZZY_KV_OK && $param_style ne $NAMED) &&
-         (!$ok) &&
-         ($arg_count % 2 == 0))
+      (($fuzzy == $FUZZY_KV_OK && $param_style ne $NAMED) && (!$ok) && ($arg_count % 2 == 0))
      )
    {
       my %h;
@@ -1027,7 +1043,8 @@ sub validate
       $max = (!$extra_ok || $max < $signature_info->{extra_cutoff}) ? $max : $signature_info->{extra_cutoff};
 
       # skip anything past positional cutoff
-      $max = (!exists($signature_info->{positional_cutoff}) || $max < $signature_info->{positional_cutoff}) ? $max :
+      $max =
+        (!exists($signature_info->{positional_cutoff}) || $max < $signature_info->{positional_cutoff}) ? $max :
         $signature_info->{positional_cutoff};
 
       # args are associated with the corresponding positional argument
@@ -1130,7 +1147,7 @@ EOT
 
    for ($idx = 0; $idx < $max; $idx++)
    {
-      $spec  = $signature_info->{signature_spec}->[$idx];
+      $spec = $signature_info->{signature_spec}->[$idx];
       if (!$spec->{name}) { $self->{on_fail}->("Parameter name is missing"); }
       $field = $spec->{name};
       $chunk = "";
