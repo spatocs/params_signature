@@ -767,7 +767,8 @@ sub validate
       $ok,             $msg,            $called,      $arg_hash,       $max,    $idx,        $signature_spec,
       $arg_count,      $field,          $type_passed, $tc,             $type,   $spec,       $value,
       $fuzzy,          %name_lookup,    $key,         $normalize_keys, $args,   $signature,  $cfg,
-      @depends_fields, @extra_fields,   $extra_ok,    $name_regex,     $nr2,    $arg_hash_index
+      @depends_fields, @extra_fields,   $extra_ok,    $name_regex,     $nr2,    $arg_hash_index,
+      %arg_hash_copy, $arg_hash_copy_set
       );
 
    # validate params
@@ -861,21 +862,24 @@ sub validate
       }
       else
       {
+         $arg_hash_copy_set = 0;
          foreach $field (keys %{$args->[$arg_hash_index]})
          {
             if ($spec = $signature_info->{map}{$field})
             {
                # found a valid field name, so move on
                # NOTE: making a shallow copy of the original hash so we don't mess up
-               #       the original copy, which could have unintended consequences
-               my %new_h = %{$args->[$arg_hash_index]};
-               $arg_hash = \%new_h;
+               #       the original, which could have unintended consequences
+               #       since we would be making changes to that hash; the original hash could
+               #       be something that the caller uses for other purposes
+               if (!$arg_hash_copy_set)
+               {
+                  $arg_hash_copy_set = 1;
+                  %arg_hash_copy = %{$args->[$arg_hash_index]};
+                  $arg_hash = \%arg_hash_copy;
+               }
 
-               # WARNING: modifying parameter for the sake of speed
-               # ... NOPE! don't do this. it could have bad side effects!
-               #$arg_hash = $args->[$arg_hash_index];
                $ok = 1;
-               last;
             }
             elsif (!$extra_ok)
             {
@@ -989,7 +993,6 @@ sub validate
             {
                $arg_hash = \%h;
                $ok       = 1;
-               last;
             }
             elsif (!$extra_ok)
             {
@@ -1347,15 +1350,34 @@ The examples below do not cover more advanced scenarios which are covered in the
     # into a Foo::Bar object in @params_array
     my @params_array = validate(\@_, ["is_1_2_or_3 number", "Foo_Bar bar"])
 
+    my $something = Something->new();
+    @params_array = $something->method(1);
+    # @params_array = (1, 2)
+
+    package Something;
+    sub new {...};
+
+    sub method
+    {
+      # Note: the subroutine called to set the default value MUST be
+      #       fully qualified (include the package name)
+      ($self, $one, $two) = validate_method(\@_, ["Object self", "Str one", "Int two = Something::set_two()"]);
+      return ($one, $two);
+    }
+    sub set_two
+    {
+      return(2)
+    }
+
 =head1 DESCRIPTION
 
 In its simplest form, you call Params::Signature's validate method with your parameters and a signature specification:
 
     $params = $signature->validate(\@_, ["Str x = 'default'", "Undef|Str y?]);
 
-The signature is a list of parameter definitions.  A basic parameter definition is a string which consists of a type constraint and the name of the parameter.  The actual type constraints are defined via an external module, such as L<Type::Tiny> or L<Moose::Util::TypeConstraints>.  Type constraints can also be implemented as subroutine references.  Parameters are required by default.  A default value may be assigned to a required parameter.  Parameters may be flagged as optional using the optional flag (trailing question mark).
+The signature is a list of parameter definitions.  A basic parameter definition is a string which consists of a type constraint and the name of the parameter.  The actual type constraints are defined via an external module, such as L<Type::Tiny> or L<Moose::Util::TypeConstraints>.  Type constraints can also be implemented as subroutine references.  Parameters are required by default.  A default value may be assigned to a required parameter, but not an optional one.  Parameters may be flagged as optional using the optional flag (trailing question mark).
 
-More advanced scenarios are also supported.  Per-parameter callbacks can be used for advanced parameter validation.  Parameter aliases can be used to call a parameter by different names.  In some cases, instead of using aliases, it may make more sense to use a subroutine to normalize parameter names.  Advanced topics such as these are discussed in the L<Params::Signature::Manual>.
+More advanced scenarios are also supported.  Per-parameter callbacks can be used for advanced parameter validation.  Parameter aliases can be used to call a parameter by different names (e.g., "-param" or "param")  In some cases, instead of using aliases, it may make more sense to use a subroutine to normalize parameter names (i.e., convert "-param" to "param").  Advanced topics such as these are discussed in the L<Params::Signature::Manual>.
 
 =head1 METHODS
 
