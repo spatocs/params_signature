@@ -127,6 +127,13 @@ my @test_criteria = (
      hash_answer => {one => 1}
     },
     {
+     name        => "Pos: 2 required, 1 set, 1 with sub default",
+     args        => [1],
+     signature   => ["Int one", "Int two = { 2*2 }"],
+     ok          => 1,
+     hash_answer => {one => 1, two => 4}
+    },
+    {
      name         => "Pos: 1 required, 2 optional, 1 set, 1 with sub default",
      args         => [1],
      signature    => ["Int one", "Int two? = { 2*2 }", "Int three?"],
@@ -425,8 +432,50 @@ my @test_criteria = (
      hash_answer => {one => 1}
     },
     {
-     name => "Named: 3 required, 1 extra param, as array",
+     name      => "Named: 1 required, 1 optional, 1 set, 1 with sub default set to sub call",
+     args      => [{one => 1}],
+     signature => ["named:", "Int one", "Int two =  main::default_one() "],
+     ok        => 1,
+     hash_answer => {one => 1, two => 1}
+    },
+    {
+     name      => "Named: 1 required, 1 optional, 1 set, 1 with sub default set to hash",
+     args      => [{one => 1}],
+     signature => ["named:", "Int one", "HashRef two =  {} "],
+     ok        => 1,
+     hash_answer => {one => 1, two => {}}
+    },
+    {
+     name      => "Named: 1 required, 1 optional, 1 set, 1 with sub default set to hash, array answer",
+     args      => [{one => 1}],
+     signature => ["named:", "Int one", "HashRef two = {}"],
+     ok        => 1,
+     array_answer => [1, {}]
+    },
+    {
+     name      => "Named: 1 required, 1 optional, 1 set, 1 with sub default set to array",
+     args      => [{one => 1}],
+     signature => ["named:", "Int one", "ArrayRef two = []"],
+     ok        => 1,
+     hash_answer => {one => 1, two => []}
+    },
+    {
+     name      => "Named: 1 required, 1 optional, 1 set, 1 with sub default set to array, array answer",
+     args      => [{one => 1}],
+     signature => ["named:", "Int one", "ArrayRef two = []"],
+     ok        => 1,
+     array_answer => [1, []]
+    },
+    {
+     name => "Named: 3 required, 1 extra param, as hash",
      args => [{one => 1, two => 2, three => 3, four => 4}],
+     signature => ["named:", "Int one", "Int two", "Int three"],
+     ok        => 0,
+     msg_regex => "unexpected named parameter"
+    },
+    {
+     name => "Named: 3 required, 1 extra param, as k/v pairs",
+     args => [one => 1, two => 2, three => 3, four => 4],
      signature => ["named:", "Int one", "Int two", "Int three"],
      ok        => 0,
      msg_regex => "unexpected named parameter"
@@ -695,7 +744,16 @@ sub process_test_criteria
                 {
                     # disable warnings because some values are expected to be undef
                     no warnings;
-                    if ($criteria->{array_answer}[$idx] ne $array_answer[$idx])
+                    if (ref($criteria->{array_answer}[$idx])) 
+                    {
+                        if (ref($criteria->{array_answer}[$idx]) ne ref($array_answer[$idx]))
+                        {
+                            $failed = 1;
+                            $failed_msg = "Item $key in array answer (".ref($array_answer[$idx]).") is not the expected reference type (".ref($criteria->{array_answer}[$idx]).")";
+                            last;
+                        }
+                    }
+                    elsif ($criteria->{array_answer}[$idx] ne $array_answer[$idx])
                     {
                         $failed = 1;
                         $failed_msg = "Item $idx in array answer ($array_answer[$idx]) is not the expected value ($criteria->{array_answer}[$idx])";
@@ -713,10 +771,20 @@ sub process_test_criteria
                 {
                     # disable warnings because some values are expected to be undef
                     no warnings;
-                    if ($criteria->{hash_answer}{$key} ne $answer->{$key})
+                    if (ref($criteria->{hash_answer}{$key}))
                     {
+                        if (ref($criteria->{hash_answer}{$key}) ne ref($answer->{$key}))
+                        {
+                            $failed = 1;
+                            $failed_msg = "Item $key in hash answer (".ref($answer->{$key}).") is not the expected reference type (".ref($criteria->{hash_answer}{$key}).")";
+                            last;
+                        }
+                    }
+                    elsif ($criteria->{hash_answer}{$key} ne $answer->{$key})
+                    {
+                       print STDERR ("$key is not a ref\n"); # DEBUG
                         $failed = 1;
-                        $failed_msg = "Item $key in hash answer ($answer->{$key}) is not the expected value ($criteria->{hash_answer}{$key}";
+                        $failed_msg = "Item $key in hash answer ($answer->{$key}) is not the expected value ($criteria->{hash_answer}{$key})";
                         last;
                     }
                 }
@@ -731,3 +799,7 @@ sub process_test_criteria
     }
 }
 
+sub default_one
+{
+   return(1);
+}
