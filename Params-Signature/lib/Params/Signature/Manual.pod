@@ -24,6 +24,9 @@ The module borrows ideas from the previously mentioned modules, as well as L<Par
 In its simplest form, you simply call Params::Signature's validate method with your subroutine's parameters and a signature specification:
 
     $params = validate(\@_, ["Str x = 'default'", "Undef|Str y?"]);
+    $params = validate_method(\@_, ["Object self", "Str x = 'default'", "Undef|Str y?"]);
+
+Once C<validate_method> validates the first parameter (self), the first parameter is removed from the argument list passed to C</validate>.  As a result, documentation describing C<validate> applies equally to C<validate_method>.
 
 The signature is a list of parameter definitions.  A basic parameter definition is a string which consists of a type constraint and the name of the parameter.  The actual type constraints are defined via an external module, such as L<Type::Tiny> or L<Moose::Util::TypeConstraints>.  A subroutine reference may also be used as a type constraint.  Parameters are required by default.  A default value may be assigned to a required parameter, but not an optional one.  Parameters may be flagged as optional using the optional flag (trailing question mark).
 
@@ -35,7 +38,7 @@ More advanced scenarios are also supported.  Per-parameter callbacks can be used
         \@_, 
         ["Int one|uno", "Str two|dos = 'A default value'", "Str three = SomePackage::set_three()"], 
         {
-            param_style => "named",
+            param_style => named_style,
             normalize_keys => sub { $_[0] =~ s/^-//; lc $_[0] },
             callbacks => {
                 one => {
@@ -50,7 +53,7 @@ More advanced scenarios are also supported.  Per-parameter callbacks can be used
 
 =head2 Usage Style
 
-Params::Signature can be used in one of three different styles - class methods, object methods or exported subroutines.  The methods C<validate> and C<check> can be called as class methods.  The global default settings are used with class methods.  A Params::Signature object may be used to set custom settings.  A singleton per module/application should reduce the need to configure settings for each call to C<validate>.   The C<validate> and C<check> class methods can be exported and used as regular subroutines.  Under the covers, these calls are treated as calls to class methods, which means default settings are used unless overriden.  When using the exported subroutines, a hash can be used to override global settings.
+Params::Signature can be used in one of three different styles - class methods, object methods or exported subroutines.  The methods C<validate>, C<validate_method>  and C<check> can be called as class methods.  The global default settings are used with class methods.  A Params::Signature object may be used to set custom settings.  A singleton per module/application should reduce the need to configure settings for each call to C<validate>.   The C<validate>  C<validate_method> and C<check> class methods can be exported and used as regular subroutines.  Under the covers, these calls are treated as calls to class methods, which means default settings are used unless overriden.  When using the exported subroutines, a hash passed to the C<validate> subroutine can be used to override global settings.
 
 The examples below attempt to demonstrate each of the usage styles along with various parameter styles, which are discussed in the next section.
 
@@ -73,31 +76,36 @@ The examples below attempt to demonstrate each of the usage styles along with va
     # to magically coerce a hash into a Foo::Bar via validate()
     coerce "Foo_Bar", from "HashRef", via { new Foo::Bar(%{$_[0]})});
 
-    # * if bar is a HashRef in @_ it will be coerced by validate
-    #   into a Foo::Bar object in @params_array
-    # * note that param_style is set to "named" for just this 
+    # * if 'self' is a HashRef in @_ it will be coerced by validate
+    #   into a Foo::Bar object in the returned parameters;
+    # * note that param_style is set to named_style for just this 
     #   call to validate
-    my @params_array = validate(
+    my ($self, $number) = validate_method(
             \@_,
-            ["is_123 number", "Foo_Bar bar"],
-            {param_style => 'named'}
+            ["Foo_Bar self", "is_123 number"],
+            {param_style => named_style}
         );
 
     my  ($passed, $new_value, $type_name, $tc) = check("Foo_Bar", $value);
     
     $passed = check("Foo_Bar", $value);
 
+    my ($self, $one, $two) = validate_method(\@_, ["Object self", "Str one", "Str two"])
+
+    my $params = validate_method(\@_, ["Object self", "Str one", "Str two"])
+    # $params = {self => { the object }, one => 1, two => 2)
+
 
     ##############################
     # Using Object-Oriented Interface
     # ... show off advanced features
 
-    use Params::Signature;
+    use Params::Signature qw(:all);
     use Types::Standard;
 
     # -- positional parameter style --
     # parameters are passed to routines using 'positional' style
-    my $ps = new Params::Signature(param_style => "positional");
+    my $ps = new Params::Signature(param_style => positional_style);
 
     # all positional params
     sub_one(1,"hi")
@@ -131,10 +139,18 @@ The examples below attempt to demonstrate each of the usage styles along with va
         ...
     }
 
+    $obj->method_one(1,2);
+
+    sub method_one
+    {
+      my $params = $ps->validate_method(\@_, ["Object self", "Int one", "Int two"])
+      # $params = {self => $obj, one => 1, two => 2}
+    }
+
     # -- named parameter style --
     # all subroutines use named parameters only
     # (note difference in handling 'other' parameter using "mixed" style below)
-    my $named_ps = new Params::Signature(param_style => "named");
+    my $named_ps = new Params::Signature(param_style => named_style);
 
     named_sub_one({one => 1, two => 'hi', options => {other => 3}});
 
@@ -218,6 +234,7 @@ The examples below attempt to demonstrate each of the usage styles along with va
     # import exported sub's into current namespace 
 
     Params::Signature->validate(...);
+    Params::Signature->validate_method(...);
     Params::Signature->check(...);
 
 
@@ -234,7 +251,7 @@ The validate method first looks to see if an explicit style has been passed in t
 Each subroutine can potentially use a different parameter style.  In practice, it's probably best to set the style in the Params::Signature validator object and then use the same style throughout a module or application, but that is not a requirement.  The global default is "positional", and "fuzzy" is disabled.  Set "fuzzy=1" so that named parameters in a hash may be used with "generic" signatures that do not mark some parameters as named and others as positional.  See the L<Params::Signature> documentation for a thorough discussion about using "fuzzy".
 
     # specify a default for the object
-    my $signature = new Params::Signature(param_style => "positional");
+    my $signature = new Params::Signature(param_style => positional_style);
 
     positional_only(1, 'hi', 3);
     use_named_only(one => 1, two => 'hi', three => 3);
@@ -256,7 +273,7 @@ Each subroutine can potentially use a different parameter style.  In practice, i
         my $params = $signature->validate(
                  \@_, 
                  ['Int one', 'Str two', 'Num three']
-                 { param_style => "named"}
+                 { param_style => named_style}
                  );
     }
 
@@ -588,7 +605,7 @@ At times, a type constraint is not enough to validate a parameter.  Callbacks ca
     $params = validate(
         \@_, 
         signature => ["Int one"], 
-        param_style => "positional",
+        param_style => positional_style,
         callbacks => {
             one => {
                 "is less than 2" => sub { $_[0] < 2 },

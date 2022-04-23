@@ -22,8 +22,8 @@ use Scalar::Util;
 use Class::Inspector;
 
 our @ISA         = qw(Exporter);
-our @EXPORT_OK   = qw(validate check hash_param_ok kv_param_ok strict_param);
-our %EXPORT_TAGS = (all => [qw(validate check hash_param_ok kv_param_ok strict_param)]);
+our @EXPORT_OK   = qw(validate check hash_param_ok kv_param_ok strict_param positional_style named_style mixed_style);
+our %EXPORT_TAGS = (all => [qw(validate check hash_param_ok kv_param_ok strict_param positional_style named_style mixed_style)]);
 
 our $VERSION = "0.04";
 
@@ -42,10 +42,11 @@ my $ASSIGN_SUB     = 3;
 
 my $POSITIONAL          = "positional";
 my $NAMED               = "named";
-my $NAMED_RAW           = "named_raw";
 my $MIXED               = "mixed";
-my $FUZZY               = "fuzzy";
 my $DEFAULT_PARAM_STYLE = $POSITIONAL;
+sub positional_style { $POSITIONAL; }
+sub named_style { $NAMED; }
+sub mixed_style { $MIXED; }
 
 # values for fuzzy
 my $FUZZY_OFF     = 0;
@@ -1415,7 +1416,7 @@ All functionality is accessed via methods.  You can use class methods (C<Params:
 =head2 new
 
     new Params::Signature(
-            param_style => "positional",
+            param_style => positional_style,
             fuzzy => hash_param_ok,
             coerce => 1,
             on_fail => sub { oops($_[0]) },
@@ -1423,7 +1424,7 @@ All functionality is accessed via methods.  You can use class methods (C<Params:
             called => "My::Module"
         );
 
-B<param_style>: Parameter style is one of "positional", "named" or "mixed".  The actual signature passed to L</"validate"> may override the default set in the new signature object.  The default value in the object is used when the actual subroutine signature lacks sufficient information to determine the parameter style.
+B<param_style>: Parameter style is one of "positional_style", "named_style" or "mixed_style".  The actual signature passed to L</"validate"> may override the default set in the new signature object.  The default value in the object is used when the actual subroutine signature lacks sufficient information to determine the parameter style.
 
 B<fuzzy>: Allow the L</"validate"> method to use 'fuzzy logic' to determine the parameter passing style used to invoke the caller.  Enable this if you want to be able to call a subroutine with either positional parameters or key/value pairs that match the subroutine signature.  When using named parameters, values should be passed as a hash.  However, "raw" key/value pairs in @_ are supported but are generally not considered a good practice.  If raw key/value pairs are used, the list must be balanced (it must have an even number of values). The fuzzy logic confirms that at least one parameter name from the signature appears as a key (however the key is found). 
 
@@ -1508,7 +1509,7 @@ B<on_fail>:  Set the subroutine to call if an error is encountered.  Carp::confe
 B<normalize_keys>: A subroutine to normalize named parameters passed in to caller.
 
     my $signature = new Params::Signature(
-                        param_style => "named",
+                        param_style => named_style,
                         normalize_keys => sub { $_[0] =~ s/^-//; lc $_[0] }
                         );
 
@@ -1568,8 +1569,7 @@ Validate the parameters passed to a subroutine using a subroutine signature.
                             ]
                         );
 
-    # use named parameters to fine tune processing
-    # and override defaults
+    # use configuration hash (3rd parameter) to override default settings
     my $params = validate(
                     \@_,
                     [
@@ -1581,7 +1581,7 @@ Validate the parameters passed to a subroutine using a subroutine signature.
                         "..."
                     ],
                     {
-                        param_style => "mix",
+                        param_style => mixed_style,
                         normalize_keys => sub { lc $_[0] },
                         fuzzy => hash_param_ok,
                         called => "YourModule",
@@ -1597,27 +1597,26 @@ Validate the parameters passed to a subroutine using a subroutine signature.
 You can also validate the parameters passed to a method.
 
     my $self = shift;
-    my $params = $signature->validate(
+    my $params = $signature->validate_method(
                 \@_,
-                ["Int one", "Int two", "Int :opt_named?"]
+                ["Object self", "Int one", "Int two", "Int :opt_named?"]
                 );
 
     - or -
 
-    # WARNING: 'Object self' does not work with named parameters
-    my $params = $signature->validate(
+    my $params = $signature->validate_method(
                 \@_,
                 ["Object self", "Int one", "Int two"]
                 );
 
 
-B<params>: A reference to an array of parameters passed to the calling subroutine.  This array is left alone and may be used after the call to validate.
+B<params>: A reference to an array of parameters passed to the calling subroutine.  Normally this is a reference to C<@_>.
 
 B<signature>: The actual subroutine signature is an array with each element representing one parameter.  Positional parameters are expected to be passed in in the same order as they appear in the signature.
 
 B<Configuration Parameters>: A hash containing any of the following values.  Values set in this hash override default values passed in to the object constructor or pre-defined as a global default.
 
-B<param_style>: Explicitly set the parameter style used to validate parameters.  The definition of the signature itself will (silently) overrule this value if there is a conflict.  For example, setting this value to 'positional' while explicitly defining all fields as named values will force the parameter style to 'named'.
+B<param_style>: Explicitly set the parameter style used to validate parameters.  The definition of the signature itself will (silently) overrule this value if there is a conflict.  For example, setting this value to 'positional_style' while explicitly defining all fields as named values will force the parameter style to "named style".
 
 B<normalize_keys>: A reference to a subroutine.  For named parameters, alters each key passed to the calling subroutine to match the parameter names used in the signature.  The routine is passed one key at a time.  The names in the signature are not passed to this subroutine.
 
@@ -1692,6 +1691,21 @@ In scalar context, the method returns a hash reference with key/value pairs for 
         # @params = [ 1, 2, 3, 4 ]
     }
 
+=cut
+
+=head2 validate_method
+
+Use C<validate_method> to validate parameters passed to an object method.  The first parameter (the object itself) is validated by C<validate_method>.  If object validation is successful, C<validate> is called with the remaining parameters.
+
+    my $params = $signature->validate_method(
+                \@_,
+                ["Object self", "Int one", "Int two"]
+                );
+
+    my ($self, $one, $two) = $signature->validate_method(
+                \@_,
+                ["Object self", "Int one", "Int two"]
+                );
 =cut
 
 =head2 check
