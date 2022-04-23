@@ -25,13 +25,15 @@ In its simplest form, you simply call Params::Signature's validate method with y
 
     $params = validate(\@_, ["Str x = 'default'", "Undef|Str y?"]);
 
-The signature is a list of parameter definitions.  A basic parameter definition is a string which consists of a type constraint and the name of the parameter.  The actual type constraints are defined via an external module, such as L<Type::Tiny> or L<Moose::Util::TypeConstraints>.  A subroutine reference may also be used as a type constraint.  Parameters are required by default.  A default value may be assigned to a required parameter.  Parameters may be flagged as optional using the optional flag (trailing question mark).
+The signature is a list of parameter definitions.  A basic parameter definition is a string which consists of a type constraint and the name of the parameter.  The actual type constraints are defined via an external module, such as L<Type::Tiny> or L<Moose::Util::TypeConstraints>.  A subroutine reference may also be used as a type constraint.  Parameters are required by default.  A default value may be assigned to a required parameter, but not an optional one.  Parameters may be flagged as optional using the optional flag (trailing question mark).
 
-More advanced scenarios are also supported.  Per-parameter callbacks can be used for advanced parameter validation.  Parameter aliases can be used to call a parameter by different names.  In some cases, instead of using aliases, it may make more sense to use a callback to normalize parameter names.  Configuration options can be passed in a hash.
+More advanced scenarios are also supported.  Per-parameter callbacks can be used for advanced parameter validation.  Parameter aliases can be used to call a parameter by different names (e.g., "one" or "uno").  In some cases, instead of using aliases, it may make more sense to use a callback to normalize parameter names (e.g., "-one" converted to "one").  Configuration options can be passed in a hash.
 
+    # note that to call a subroutine (set_three) to set a default value, the subroutine's fully
+    # qualified name (including the package name) must be used
     $params = validate(
         \@_, 
-        ["Int one|uno", "Str two|dos = 'A default value'"], 
+        ["Int one|uno", "Str two|dos = 'A default value'", "Str three = SomePackage::set_three()"], 
         {
             param_style => "named",
             normalize_keys => sub { $_[0] =~ s/^-//; lc $_[0] },
@@ -473,7 +475,7 @@ A parameter is made up of a type constraint, a name (and aliases), an optional/r
                        |            |   |  |    | (literal, deps or sub)
                      ______      _____  _       ______
                     /      \    /     \/ \ /\  /      \
-                  "Str|Int     user|uid?    =  'not set' "
+                  "Str|Int     user|uid!    =  'not set' "
                      /   /       /  / /         /
     parameter type --   /       /  / /         /
   alternate param type -       /  / /         /
@@ -496,7 +498,7 @@ The actual type constraints are expected to be subroutine references or objects 
                     );
     }
 
-A parameter's type constraint can include multiple types (e.g., Undef or Str).  The value assigned to a parameter must match at least one of the type constraints assigned to the parameter.  Multiple type constraints are separated by an or bar (pipe symbol).  Note that most type constraint modules allow for the definition of "union" types.  This method eliminates the need to define union types, though they can still be used just as any other type constraint.  Defining a union type via the signature can be used to produce "union" types when using subroutine referencess as type contraints.
+A parameter's type constraint can include multiple types (e.g., "Undef|Str").  The value assigned to a parameter must match at least one of the type constraints assigned to the parameter.  Multiple type constraints are separated by an or bar (pipe symbol).  Note that most type constraint modules allow for the definition of "union" types.  This method eliminates the need to define union types, though they can still be used just as any other type constraint.  Defining a union type via the signature can be used to produce "union" types when using subroutine referencess as type contraints.
 
 
     our $MyHashRef = sub { die ("Not a hash") unless (ref($_[0]) eq "HASH") };
@@ -553,13 +555,14 @@ A parameter can use one of 3 indicators.  The C<=> (equal sign) is used to assig
 If a required parameter is not set, a default value may be assigned to it.  The default value may be a literal, the value of another parameter or the value returned by a subroutine.  Default values are not assigned to optional values.  However, there is one exception to this rule.  A default value may be assigned to an optional parameter which becomes required when a field it depends on is set (see L</Dependents>).  The "<=" (back arrow) is used to assign the value of another parameter as the default value of an unset parameter.
 
     # Assign a literal value as the default
-    ["Str login = 'not set'"]
+    ["Str login = 'not set'", "Int age = 0"]
 
     # Assign the value of another parameter as the default value
     # If 'bar' is not set, it defaults to the value already assigned to 'foo'
     ["Str foo", "Str bar <= foo"]
 
-    ["Str foo = { get_a_foo() }"]
+    # the subroutine call must include the subroutine's package name
+    ["Str foo = { PackageName::get_a_foo() }"]
 
 =cut
 
@@ -572,7 +575,7 @@ A list of fields may be declared as being dependent on the presence of another o
     [
         "Str foo? << [bar, baz]",
         "Str bar? = 'default bar'",
-        "Str baz? = { get_next_baz() }"
+        "Str baz? = { SomePackage::get_next_baz() }"
     ]
 
 
@@ -580,7 +583,7 @@ A list of fields may be declared as being dependent on the presence of another o
 
 =head2 Callbacks
 
-At times, a type constraint is not enough to validate a parameter.  Callbacks can be defined for each parameter.  Each callback must return a true value, otherwise, the parameter is rejected and the 'on_fail' subroutine is executed.
+At times, a type constraint is not enough to validate a parameter.  Callbacks can be defined for each parameter.  Each callback must return a true value, otherwise, the parameter is rejected and the 'on_fail' subroutine is executed.  Exceptions are not caught if a callback calls 'die'.
 
     $params = validate(
         \@_, 
@@ -653,7 +656,7 @@ It's possible to use the type constraint to manually coerce a value from one "th
 
 =head1 PERFORMANCE
 
-The Params::Signature object caches the parsed form of each signature it validates.  Re-using the same object to validate subroutine parameters eliminates the need to parse the signature every time.  Using a singleton per module or application is recommended for reducing the amount of time it takes to validate parameters.  Basic benchmarks show it to be slower than Data::Validator or the pure perl version of Params::Validate:
+The Params::Signature object caches the parsed form of each signature it validates.  Re-using the same object to validate subroutine parameters eliminates the need to parse the signature every time.  Using a singleton per module or application is recommended for reducing the amount of time it takes to validate parameters.  Basic benchmarks show it to be slower than Data::Validator.  The results below use the pure perl version of Params::Validate:
 
 		  Rate     [P:V] [P:V h/l] [P:S h/h] [P:S l/l] [P:S l/h]     [D:V]
      [P:V]     14529/s        --       -3%      -21%      -36%      -40%      -57%
