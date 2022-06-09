@@ -368,6 +368,8 @@ sub _build_signature_info
    foreach $arg (@{$_[0]})
    {
       $spec = {};
+      # put whitespace around indicator (=, <=, <<)
+      $arg =~ s/([\<\=]{1,2})/ $1 /;
       ($type, $name, $indicator, $indicator_value) =
         split(/\s+/, $arg, $ARG_MAX);
 
@@ -769,7 +771,7 @@ sub validate
       $arg_count,      $field,          $type_passed, $tc,             $type,   $spec,       $value,
       $fuzzy,          %name_lookup,    $key,         $normalize_keys, $args,   $signature,  $cfg,
       @depends_fields, @extra_fields,   $extra_ok,    $name_regex,     $nr2,    $arg_hash_index,
-      %arg_hash_copy, $arg_hash_copy_set
+      %arg_hash_copy, $arg_hash_copy_set, $how_many
       );
 
    # validate params
@@ -885,8 +887,17 @@ sub validate
             elsif (!$extra_ok)
             {
                # this field doesn't belong in a named arg hash, so
-               # this hash should not be treated as a list of named args
-               if ($param_style eq $NAMED)
+               # this hash should probably not be treated as a list of named args;
+               # this may be a required or optional argument that just happens to be a hash,
+               # so we're going to treat it as a positional parameter
+               if (($param_style eq $POSITIONAL) || ($param_style eq $MIXED))
+               {
+                  # process (as positional?) below
+                  $arg_hash = {};
+                  $ok       = 0;
+                  last;
+               }
+               else
                {
                   # args MUST be named parameters, so the fact that
                   # $field is not valid indicates invalid args
@@ -894,11 +905,6 @@ sub validate
                   $ok = 0;
                   return;
                }
-
-               # process (as positional?) below
-               $arg_hash = {};
-               $ok       = 0;
-               last;
             }
             else
             {
@@ -1031,7 +1037,15 @@ sub validate
       if ($arg_count > $signature_info->{signature_param_count} &&
          (!$extra_ok))
       {
-         $on_fail->("$called Encountered unexpected extra parameter(s)");
+         $how_many = $arg_count - $signature_info->{signature_param_count};
+         if ($field)
+         {
+            $on_fail->("$called Encountered $how_many unexpected extra parameter(s) like $field [style=$param_style]");
+         }
+         else
+         {
+            $on_fail->("$called Encountered $how_many unexpected extra parameter(s) [style=$param_style]");
+         }
          return;
       }
 
@@ -1280,7 +1294,8 @@ EOC
    #print STDERR $sub;
 
    $s = eval "sub { $sub }";
-   if ($@) { print STDERR "uh-oh=$@\n"; }
+   # if code in $sub is valid, eval should work
+   #if ($@) { print STDERR "uh-oh=$@\n"; } # DEBUG
    return $s;
 }
 

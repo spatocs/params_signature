@@ -451,7 +451,7 @@ my @test_criteria = (
      args => [{one => 1, two => 2, three => 3, four => 4}],
      signature => ["named:", "Int one", "Int two", "Int three"],
      ok        => 0,
-     msg_regex => "unexpected extra parameter"
+     msg_regex => "unexpected named parameter"
     },
 
     );
@@ -609,6 +609,31 @@ my @test_fuzzy_criteria = (
      signature    => ["Int one", "Int two", "Int three"],
      ok           => 1,
      array_answer => [1, 2, 3]
+    },
+    {
+     name         => "fuzzy Pos: invalid hash as first arg, should fail type check",
+     args         => [{one => 1, oops => 1}],
+     signature    => ["Int one"],
+     ok           => 0,
+     msg_regex    => "Expected Int, got HASH"
+    },
+    {
+     name         => "fuzzy Pos: invalid hash as first required arg, should pass type check as positional arg",
+     args         => [{oops => 1}],
+     signature    => ["HashRef one"],
+     ok           => 1,
+    },
+    {
+     name         => "fuzzy Pos: invalid hash as first required arg, should pass type check as positional arg",
+     args         => [{oops => 1}],
+     signature    => ["HashRef one", "Int two=2", "Int three=3"],
+     ok           => 1,
+    },
+    {
+     name         => "fuzzy Pos: invalid hash as first optional arg, should pass type check as positional arg",
+     args         => [{one => 1, oops => 1}],
+     signature    => ["HashRef one?"],
+     ok           => 1,
     },
     );
 

@@ -782,7 +782,6 @@ sub process_test_criteria
                     }
                     elsif ($criteria->{hash_answer}{$key} ne $answer->{$key})
                     {
-                       print STDERR ("$key is not a ref\n"); # DEBUG
                         $failed = 1;
                         $failed_msg = "Item $key in hash answer ($answer->{$key}) is not the expected value ($criteria->{hash_answer}{$key})";
                         last;
