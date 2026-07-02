@@ -4,7 +4,7 @@ use strict;
 use Carp;
 use Params::Signature;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 #use Data::Dumper;
 
@@ -257,7 +257,7 @@ Params::Signature::Multi - support for subroutine selection and dispatch based o
 
 =head1 VERSION
 
-Version 0.02
+Version 0.05
 
 =cut
 

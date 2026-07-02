@@ -25,7 +25,7 @@ our @ISA         = qw(Exporter);
 our @EXPORT_OK   = qw(validate check hash_param_ok kv_param_ok strict_param positional_style named_style mixed_style);
 our %EXPORT_TAGS = (all => [qw(validate check hash_param_ok kv_param_ok strict_param positional_style named_style mixed_style)]);
 
-our $VERSION = "0.04";
+our $VERSION = "0.05";
 
 my $OPTIONAL_SYMBOL = "optional:";
 my $CUTOFF_SYMBOL   = "named:";
@@ -1334,7 +1334,7 @@ Params::Signature - support for parameter validation based on a subroutine signa
 
 =head1 VERSION
 
-Version 0.04
+Version 0.05
 
 =cut
 
