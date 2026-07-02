@@ -72,7 +72,7 @@ The C<check> method returns:
 In its simplest form, you simply call Params::Signature's validate method with your subroutine's parameters and a signature specification:
 
     $params = validate(\@_, ["Str x = 'default'", "Undef|Str y?"]);
-    $params = validate_method(\@_, ["Object self", "Str x = 'default'", "Undef|Str y?"]);
+    $params = Params::Signature->validate_method(\@_, ["Object self", "Str x = 'default'", "Undef|Str y?"]);
 
 Once C<validate_method> validates the first parameter (self), the first parameter is removed from the argument list passed to L<Params::Signature/validate>.  As a result, documentation describing C<validate> applies equally to C<validate_method>.
 
@@ -101,7 +101,7 @@ More advanced scenarios are also supported.  Per-parameter callbacks can be used
 
 =head2 Usage Style
 
-Params::Signature can be used in one of three different styles - class methods, object methods or exported subroutines.  The methods C<validate>, C<validate_method>  and C<check> can be called as class methods.  The global default settings are used with class methods.  A Params::Signature object may be used to set custom settings.  A singleton per module/application should reduce the need to configure settings for each call to C<validate>.   The C<validate>  C<validate_method> and C<check> class methods can be exported and used as regular subroutines.  Under the covers, these calls are treated as calls to class methods, which means default settings are used unless overriden.  When using the exported subroutines, a hash passed to the C<validate> subroutine can be used to override global settings.
+Params::Signature can be used in one of three different styles - class methods, object methods or exported subroutines.  The methods C<validate>, C<validate_method>  and C<check> can be called as class methods.  The global default settings are used with class methods.  A Params::Signature object may be used to set custom settings.  A singleton per module/application should reduce the need to configure settings for each call to C<validate>.   The C<validate> and C<check> class methods can be exported and used as regular subroutines.  C<validate_method> is available as a class method (C<Params::Signature-E<gt>validate_method(...)>) or object method (C<$signature-E<gt>validate_method(...)>) but is not exported.  Under the covers, these calls are treated as calls to class methods, which means default settings are used unless overriden.  When using the exported subroutines, a hash passed to the C<validate> subroutine can be used to override global settings.
 
 The examples below attempt to demonstrate each of the usage styles along with various parameter styles, which are discussed in the next section.
 
@@ -128,7 +128,7 @@ The examples below attempt to demonstrate each of the usage styles along with va
     #   into a Foo::Bar object in the returned parameters;
     # * note that param_style is set to named_style for just this
     #   call to validate
-    my ($self, $number) = validate_method(
+    my ($self, $number) = Params::Signature->validate_method(
             \@_,
             ["Foo_Bar self", "is_123 number"],
             {param_style => named_style}
@@ -138,9 +138,9 @@ The examples below attempt to demonstrate each of the usage styles along with va
 
     $passed = check("Foo_Bar", $value);
 
-    my ($self, $one, $two) = validate_method(\@_, ["Object self", "Str one", "Str two"]);
+    my ($self, $one, $two) = Params::Signature->validate_method(\@_, ["Object self", "Str one", "Str two"]);
 
-    my $params = validate_method(\@_, ["Object self", "Str one", "Str two"]);
+    my $params = Params::Signature->validate_method(\@_, ["Object self", "Str one", "Str two"]);
     # $params = {self => { the object }, one => 1, two => 2}
 
 
