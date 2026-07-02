@@ -6,18 +6,66 @@ Params::Signature::Manual - an overview of Params::Signature
 
 =head1 VERSION
 
-Version 0.03
+Version 0.04
 
 =cut
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 
 =head1 SYNOPSIS
 
-The Params::Signature module provides a way to validate subroutine (and method) parameters using a declarative syntax.  Although inspired by the signatures used in Perl 6, compatibility with such signatures is not the goal of this module.  Instead, it strives to provide a somewhat comprehensive list of features that seemed useful to the author without going as far as Perl 6.  There are already modules that attempt to provide more comprehensive Perl 6-inspired signatures (L<Perl6::Signature>, L<MooseX::Method::Signatures>, L</Method::Signatures>).  
+The Params::Signature module provides a way to validate subroutine (and method) parameters using a declarative syntax.  Although inspired by the signatures used in Perl 6, compatibility with such signatures is not the goal of this module.  Instead, it strives to provide a somewhat comprehensive list of features that seemed useful to the author without going as far as Perl 6.  There are already modules that attempt to provide more comprehensive Perl 6-inspired signatures (L<Perl6::Signature>, L<MooseX::Method::Signatures>, L<Method::Signatures>).
 
-The module borrows ideas from the previously mentioned modules, as well as L<Params::Validate>, which served as the initial inspiration for this module.  
+The module borrows ideas from the previously mentioned modules, as well as L<Params::Validate>, which served as the initial inspiration for this module.
+
+=head1 EXTENDED DISCUSSION
+
+This manual is the long-form guide for Params::Signature.  The module POD
+(L<Params::Signature>) is the canonical API reference; this manual focuses on
+background, usage patterns, tradeoffs, and detailed examples.
+
+Params::Signature provides signature-based validation intended to stay concise
+at call sites while still allowing strong type checks, default values,
+callbacks, aliases, and mixed positional/named calling conventions.
+
+The module works with type constraints from the caller's namespace (for
+example Types::Standard/Type::Tiny declarations), Moose/Mouse constraints, and
+plain code references.  This lets you keep validation close to your domain
+types instead of hard-coding ad-hoc validation logic in each subroutine.
+
+For production code, use one validator object per module/application and reuse
+it across calls.  This improves consistency and takes advantage of signature
+caching.
+
+=head2 API Quick Reference
+
+Core public methods are:
+
+    new
+    validate
+    validate_method
+    check
+
+Helper constants exported via C<:all>:
+
+    positional_style
+    named_style
+    mixed_style
+    strict_param
+    hash_param_ok
+    kv_param_ok
+
+Fuzzy modes:
+
+    strict_param  (0): no fuzzy detection
+    hash_param_ok (1): named arguments allowed in one hash
+    kv_param_ok   (2): hash mode plus raw key/value detection
+
+The C<check> method returns:
+
+    scalar context: 1 or 0
+    list context: (passed, coerced_or_original_value, message, type_constraint)
 
 =head1 DESCRIPTION
 
@@ -26,7 +74,7 @@ In its simplest form, you simply call Params::Signature's validate method with y
     $params = validate(\@_, ["Str x = 'default'", "Undef|Str y?"]);
     $params = validate_method(\@_, ["Object self", "Str x = 'default'", "Undef|Str y?"]);
 
-Once C<validate_method> validates the first parameter (self), the first parameter is removed from the argument list passed to C</validate>.  As a result, documentation describing C<validate> applies equally to C<validate_method>.
+Once C<validate_method> validates the first parameter (self), the first parameter is removed from the argument list passed to L<Params::Signature/validate>.  As a result, documentation describing C<validate> applies equally to C<validate_method>.
 
 The signature is a list of parameter definitions.  A basic parameter definition is a string which consists of a type constraint and the name of the parameter.  The actual type constraints are defined via an external module, such as L<Type::Tiny> or L<Moose::Util::TypeConstraints>.  A subroutine reference may also be used as a type constraint.  Parameters are required by default.  A default value may be assigned to a required parameter, but not an optional one.  Parameters may be flagged as optional using the optional flag (trailing question mark).
 
@@ -35,8 +83,8 @@ More advanced scenarios are also supported.  Per-parameter callbacks can be used
     # note that to call a subroutine (set_three) to set a default value, the subroutine's fully
     # qualified name (including the package name) must be used
     $params = validate(
-        \@_, 
-        ["Int one|uno", "Str two|dos = 'A default value'", "Str three = SomePackage::set_three()"], 
+        \@_,
+        ["Int one|uno", "Str two|dos = 'A default value'", "Str three = SomePackage::set_three()"],
         {
             param_style => named_style,
             normalize_keys => sub { $_[0] =~ s/^-//; lc $_[0] },
@@ -74,11 +122,11 @@ The examples below attempt to demonstrate each of the usage styles along with va
     my $params_hashref = validate(\@_, ["DoesIt doit", "HashRef a_hash"]);
 
     # to magically coerce a hash into a Foo::Bar via validate()
-    coerce "Foo_Bar", from "HashRef", via { new Foo::Bar(%{$_[0]})});
+    coerce "Foo_Bar", from "HashRef", via { new Foo::Bar(%{$_[0]}) };
 
     # * if 'self' is a HashRef in @_ it will be coerced by validate
     #   into a Foo::Bar object in the returned parameters;
-    # * note that param_style is set to named_style for just this 
+    # * note that param_style is set to named_style for just this
     #   call to validate
     my ($self, $number) = validate_method(
             \@_,
@@ -86,14 +134,14 @@ The examples below attempt to demonstrate each of the usage styles along with va
             {param_style => named_style}
         );
 
-    my  ($passed, $new_value, $type_name, $tc) = check("Foo_Bar", $value);
-    
+    my  ($passed, $new_value, $message, $tc) = check("Foo_Bar", $value);
+
     $passed = check("Foo_Bar", $value);
 
-    my ($self, $one, $two) = validate_method(\@_, ["Object self", "Str one", "Str two"])
+    my ($self, $one, $two) = validate_method(\@_, ["Object self", "Str one", "Str two"]);
 
-    my $params = validate_method(\@_, ["Object self", "Str one", "Str two"])
-    # $params = {self => { the object }, one => 1, two => 2)
+    my $params = validate_method(\@_, ["Object self", "Str one", "Str two"]);
+    # $params = {self => { the object }, one => 1, two => 2}
 
 
     ##############################
@@ -154,7 +202,7 @@ The examples below attempt to demonstrate each of the usage styles along with va
 
     named_sub_one({one => 1, two => 'hi', options => {other => 3}});
 
-    # ERROR: Can't use raw key/value pairs...
+    # ok: raw key/value pairs are accepted when keys match signature names
     named_sub_one(one => 1, two => 'hi', options => {other => 3});
 
     # ERROR! missing param names...
@@ -182,7 +230,7 @@ The examples below attempt to demonstrate each of the usage styles along with va
     my $mixed_ps = new Params::Signature();
     mixed_sub_one(1, 'hi', {other => 3});
 
-    # ERROR: cannot use raw key/value pairs
+    # ok: mixed style can use positional args followed by raw named key/value pairs
     mixed_sub_one(1, 'hi', other => 3);
     mixed_sub_one(1, 'hi', 'other', 3);
 
@@ -209,44 +257,47 @@ The examples below attempt to demonstrate each of the usage styles along with va
     # 'fuzzy validation' lets $signature->validate() determine the
     # calling style and process parameters accordingly
     # fuzzy => 1 : accept named args in HASH
-    # fuzzy => 2 : accept named args as raw key/value pairs
+    # fuzzy => 2 : also accept named args as raw key/value pairs
     my $fuzzy_signature = new Params::Signature(fuzzy => 1);
 
     # use positional arguments
     call_fuzzy_style(1, "hi")
 
-    # use named arguments in a hash 
+    # use named arguments in a hash
     call_fuzzy_style({x => 1, word => "hi"})
 
     sub call_fuzzy_style
     {
         # don't need to change signature regardless of how sub is called
         my $params = $fuzzy_signature->validate(\@_, ["Int x", "Str word"]);
-        
+
         ...
     }
 
     ##############################
-    # Using Class Methods 
+    # Using Class Methods
     #
     # All object methods are available as class methods
     # for developers that don't want to use an object nor
-    # import exported sub's into current namespace 
+    # import exported sub's into current namespace
 
     Params::Signature->validate(...);
     Params::Signature->validate_method(...);
     Params::Signature->check(...);
+
+    # check() return values in list context:
+    # (passed, coerced_or_original_value, message, type_constraint)
 
 
 =cut
 
 =head2 Parameter Style
 
-Subroutines in perl are commonly called using different parameter styles - positional, named or a mixture of both.  Knowing the parameter style is necessary in order to properly interpret the values that are being validated.  
+Subroutines in perl are commonly called using different parameter styles - positional, named or a mixture of both.  Knowing the parameter style is necessary in order to properly interpret the values that are being validated.
 
-There are multiple ways to indicate the parameter style.  An explicit parameter style may be specified when the L</validate> method is called.  The signature itself may be defined in such a way as to identify the parameter style (via placement of the "named:" pseudo-option or by using C<:> to identify named parameters).  A default parameter style may be specified when a Params::Signature object is generated.  If a parameter style is not specified, the global default is positional.  
+There are multiple ways to indicate the parameter style.  An explicit parameter style may be specified when the L<Params::Signature/validate> method is called.  The signature itself may be defined in such a way as to identify the parameter style (via placement of the "named:" pseudo-option or by using C<:> to identify named parameters).  A default parameter style may be specified when a Params::Signature object is generated.  If a parameter style is not specified, the global default is positional.
 
-The validate method first looks to see if an explicit style has been passed in to the validate method. If a style was not passed in, the signature is examined to determine the parameter style.  The Params::Signature object is consulted if an explicit style is not set and the signature supports either positional or named parameters.  If an object is not is use, the global default (positional) is used.  Lastly, if "fuzzy" is enabled, a number of checks are performed in an attempt to determine which style was actually used.  The detection logic attempts to be conservative and should work as expected in most cases (of course, this assumes you have the right expectations in most cases).  
+The validate method first looks to see if an explicit style has been passed in to the validate method. If a style was not passed in, the signature is examined to determine the parameter style.  The Params::Signature object is consulted if an explicit style is not set and the signature supports either positional or named parameters.  If an object is not is use, the global default (positional) is used.  Lastly, if "fuzzy" is enabled, a number of checks are performed in an attempt to determine which style was actually used.  The detection logic attempts to be conservative and should work as expected in most cases (of course, this assumes you have the right expectations in most cases).
 
 Each subroutine can potentially use a different parameter style.  In practice, it's probably best to set the style in the Params::Signature validator object and then use the same style throughout a module or application, but that is not a requirement.  The global default is "positional", and "fuzzy" is disabled.  Set "fuzzy=1" so that named parameters in a hash may be used with "generic" signatures that do not mark some parameters as named and others as positional.  See the L<Params::Signature> documentation for a thorough discussion about using "fuzzy".
 
@@ -264,15 +315,15 @@ Each subroutine can potentially use a different parameter style.  In practice, i
         my $params = $signature->validate(
                         \@_,
                         ['Int one', 'Str two', 'Num three', 'named:']
-                        ;
+                        );
     }
 
     sub use_named_only
     {
         # explicitly indicate that only named parameters are accepted
         my $params = $signature->validate(
-                 \@_, 
-                 ['Int one', 'Str two', 'Num three']
+                 \@_,
+                 ['Int one', 'Str two', 'Num three'],
                  { param_style => named_style}
                  );
     }
@@ -301,7 +352,7 @@ Each subroutine can potentially use a different parameter style.  In practice, i
         # 'x' and 'y' are named only
         my $params = $signature->validate(
               \@_,
-              ['Int a', 'Int two', "Int three", "named:", "Num x", "Num y"]
+              ['Int one', 'Int two', "Int three", "named:", "Num x", "Num y"]
               );
         #  - or -
         # indicate that some of the parameters are named using perl6-ish syntax
@@ -323,13 +374,13 @@ Each subroutine can potentially use a different parameter style.  In practice, i
 
 =head3 Fuzzy Parameter Style Detection
 
-If "fuzzy" is enabled, the L</validate> method will attempt to detect the parameter style by examining the parameters.  In most cases, it will work as expected (provided you expect the right thing).  The way to distinguish between positional and named parameters is to pass named parameters inside an anonymous hash. 
+If "fuzzy" is enabled, the L<Params::Signature/validate> method will attempt to detect the parameter style by examining the parameters.  In most cases, it will work as expected (provided you expect the right thing).  The way to distinguish between positional and named parameters is to pass named parameters inside an anonymous hash.
 
 B<How it works>
 
-When "fuzzy" is set to "1", L</validate> detects if one parameter, a hash, is passed in as the first and only parameter.  If so, the hash's keys are examined to determine if they match any parameter names.  If any key matches any parameter name, the contents of the hash are validated.  
+When "fuzzy" is set to "1", L<Params::Signature/validate> detects if one parameter, a hash, is passed in as the first and only parameter.  If so, the hash's keys are examined to determine if they match any parameter names.  If any key matches any parameter name, the contents of the hash are validated.
 
-When fuzzy is set to "2", the rules for "fuzzy=1" are applied first.  If that fails and C<@_> contains an even-sized list of values, the values are examined to see if the values alternate between a parameter name and a value.  If a parameter name is found in an even element (index 0, 2, 4, etc.), the "named" parameter style is used.  If no parameter names are found where they should be, the "named" style is not used.  If the "named" style cannot be detected, L</validate> will use the default style in effect (which should be "positional").
+When fuzzy is set to "2", the rules for "fuzzy=1" are applied first.  If that fails and C<@_> contains an even-sized list of values, the values are examined to see if the values alternate between a parameter name and a value.  If a parameter name is found in an even element (index 0, 2, 4, etc.), the "named" parameter style is used.  If no parameter names are found where they should be, the "named" style is not used.  If the "named" style cannot be detected, L<Params::Signature/validate> will use the default style in effect (which should be "positional").
 
 Note that using "fuzzy" will not detect a "mixed" parameter style.  It detects the "named" style by looking for parameter names in a hash at C<$_[0]> or at the appropriate indices in C<@_>.
 
@@ -342,19 +393,19 @@ Using "fuzzy=2" to decipher what someone meant is powerful but potentially dange
     sub fuzzy_one
     {
         # 'x' and 'y' are required, but 'z' is optional
-        my $params = validate(\@_, ["Int x", "Str y", "Str z?"], {fuzzy = 1})
+        my $params = validate(\@_, ["Int x", "Str y", "Str z?"], { fuzzy => 1 })
         ...
     }
 
     # positional
-    fuzzy_one(1, "hi", "eh");                  
+    fuzzy_one(1, "hi", "eh");
 
     # ok: anonymous hash
-    fuzzy_one({x => 1, y => "hi", z => "eh"}); 
-    
+    fuzzy_one({x => 1, y => "hi", z => "eh"});
+
     # ERROR: raw key/value pairs in a list are
     #        rejected when fuzzy=1
-    fuzzy_one(x => 1, y => "hi", z => "eh");   
+    fuzzy_one(x => 1, y => "hi", z => "eh");
 
     sub fuzzy_two
     {
@@ -367,19 +418,19 @@ Using "fuzzy=2" to decipher what someone meant is powerful but potentially dange
         ...
     }
     # positional
-    fuzzy_two(1, "foo", "bar");        
+    fuzzy_two(1, "foo", "bar");
 
     # ok: hash contains known param 'three'
-    fuzzy_two({three => "bar"});       
+    fuzzy_two({three => "bar"});
 
     # ok: $_[0] is known param 'one'
-    fuzzy_two(one => 1);               
+    fuzzy_two(one => 1);
 
     # ok: $_[0],$_[2] are known params 'one' and 'two'
-    fuzzy_two(one => 1, two => 'hi');  
+    fuzzy_two(one => 1, two => 'hi');
 
-    # ERROR: $_[2] (oops) is not a known param 
-    fuzzy_two(one => 1, oops => 'hi'); 
+    # ERROR: $_[2] (oops) is not a known param
+    fuzzy_two(one => 1, oops => 'hi');
 
     sub fuzzy_2_tricky
     {
@@ -393,48 +444,48 @@ Using "fuzzy=2" to decipher what someone meant is powerful but potentially dange
     }
 
     # ok: $_[0],$_[2] are known params 'one' and 'two'
-    fuzzy_2_tricky(one => 1, two => 'hi');     
+    fuzzy_2_tricky(one => 1, two => 'hi');
 
     # ok: 'one' is known, $_[2] (dunno) treated as 'extra' param
-    fuzzy_2_tricky(one => 1, dunno => 'hi');   
+    fuzzy_2_tricky(one => 1, dunno => 'hi');
 
     # ok: 'one' is known, 'dunno' treated as 'extra' param
-    fuzzy_2_tricky({one => 1, dunno => 'hi'}); 
+    fuzzy_2_tricky({one => 1, dunno => 'hi'});
 
     # ok: WARNING: $param = {one => 'one', two => 'hey', 'p_2' => hi }
     #     the parameter list is uneven so treated as "positional"
-    fuzzy_2_tricky(one => 'hey', 'hi');        
+    fuzzy_2_tricky(one => 'hey', 'hi');
 
     # ok: WARNING: @param = ['one', 'hey', 'hi']
     #     the parameter list is uneven so treated as "positional"
-    fuzzy_2_tricky(one => 'hey', 'hi');        
+    fuzzy_2_tricky(one => 'hey', 'hi');
 
     sub tricky_one
     {
         # all optional params
-        my $params = $validate(
+        my $params = validate(
                         \@_,
                         ["Str one?", "Str two?", "Str three?", "Str four?"],
                         { fuzzy => 2 }
                         );
     }
 
-    # WARNING: ambiguous call! 
+    # WARNING: ambiguous call!
     # ... in tricky_one, $params = {one => '2', three => 4}
     # - but -
     # should it actually be:
     #   $params = {one => 'one', two => '2', three => 'three', four => '4'}
     # NOTE: values in $_[0], $_[2] happen to match parameter names
     #       ** BEWARE IF VALUES MATCH PARAMETER NAMES **
-    tricky_one("one", "2", "three", "4") 
+    tricky_one("one", "2", "three", "4")
 
     # use a hash to make intent clear
     # ... in tricky_one, $params = {one => 'two', three => 4}
-    tricky_one({"one" => "2", "three" => "4"}) 
+    tricky_one({"one" => "2", "three" => "4"})
 
     # intent is clear
-    # ... $params = {one => 'one', two => '2', three => 'three', four => '4'} 
-    tricky_one(one => "one", two => "2", "three" => "three", four => "4") 
+    # ... $params = {one => 'one', two => '2', three => 'three', four => '4'}
+    tricky_one(one => "one", two => "2", "three" => "three", four => "4")
 
 
 =cut
@@ -488,7 +539,7 @@ A parameter is made up of a type constraint, a name (and aliases), an optional/r
                        |            +-- parameter name and aliases
                        |            |   +-- optional/required flag
                        |            |   |  +-- indicator (= or <= or <<)
-                       |            |   |  |    +-- indicator value 
+                       |            |   |  |    +-- indicator value
                        |            |   |  |    | (literal, deps or sub)
                      ______      _____  _       ______
                     /      \    /     \/ \ /\  /      \
@@ -503,7 +554,7 @@ A parameter is made up of a type constraint, a name (and aliases), an optional/r
 
 =head2 Type Constraint
 
-The actual type constraints are expected to be subroutine references or objects which implement the API defined by L<Moose::Meta::TypeConstraint>.  Technically, the current implementation only requires a "check" method and looks for an optional "coerce" method.  Using these modules it's simple to define your own types.  When the L</validate> method is called, it converts the string name of a type constraint to the actual constraint or subroutine reference by searching for the type constraint in the caller's symbol table.  To use a subroutine as a "type constraint", use C<our> to store a subroutine reference in the caller.  The subroutine must die if C<$_[0]> fails validation.  Using "our" may be necessary with some type constraint libraries as well, although they generally will update the caller's symbol table when exporting a library of type constraints.
+The actual type constraints are expected to be subroutine references or objects which implement the API defined by L<Moose::Meta::TypeConstraint>.  Technically, the current implementation only requires a "check" method and looks for an optional "coerce" method.  Using these modules it's simple to define your own types.  When the L<Params::Signature/validate> method is called, it converts the string name of a type constraint to the actual constraint or subroutine reference by searching for the type constraint in the caller's symbol table.  To use a subroutine as a "type constraint", use C<our> to store a subroutine reference in the caller.  The subroutine must die if C<$_[0]> fails validation.  Using "our" may be necessary with some type constraint libraries as well, although they generally will update the caller's symbol table when exporting a library of type constraints.
 
     our $MyHashRef = sub { die ("Not a hash") unless (ref($_[0]) eq "HASH") };
     ...
@@ -515,7 +566,7 @@ The actual type constraints are expected to be subroutine references or objects 
                     );
     }
 
-A parameter's type constraint can include multiple types (e.g., "Undef|Str").  The value assigned to a parameter must match at least one of the type constraints assigned to the parameter.  Multiple type constraints are separated by an or bar (pipe symbol).  Note that most type constraint modules allow for the definition of "union" types.  This method eliminates the need to define union types, though they can still be used just as any other type constraint.  Defining a union type via the signature can be used to produce "union" types when using subroutine referencess as type contraints.
+A parameter's type constraint can include multiple types (e.g., "Undef|Str").  The value assigned to a parameter must match at least one of the type constraints assigned to the parameter.  Multiple type constraints are separated by an or bar (pipe symbol).  Note that most type constraint modules allow for the definition of "union" types.  This method eliminates the need to define union types, though they can still be used just as any other type constraint.  Defining a union type via the signature can be used to produce "union" types when using subroutine references as type constraints.
 
 
     our $MyHashRef = sub { die ("Not a hash") unless (ref($_[0]) eq "HASH") };
@@ -549,9 +600,9 @@ The default types available from Type::Tiny and Moose are:
 
 =head2 Parameter Name and Aliases
 
-A parameter is assigned a name which is used as a key when the validate method returns a hash reference.  One or more optional aliases can also be defined for a parameter.  When aliases are used, the first value is considered the name and all subsequent values are aliases. 
+A parameter is assigned a name which is used as a key when the validate method returns a hash reference.  One or more optional aliases can also be defined for a parameter.  When aliases are used, the first value is considered the name and all subsequent values are aliases.
 
-The parameter name is defined without any leading sigil character ($@%).  However, the perl 6-ish naming style of preceding every positional value with a "$" and named parameters with ":$" is supported.  For the sake of brevity, a parameter name which begins with just a colon (e.g., "Int :named_param") is also considered a named parameter.  This is where similarity with perl 6 parameter signatures more or less begins and ends.  Params::Signature also supports setting default values; however, the full range of perl 6-style signature definitions is currently not supported.  Furthermore, any leading sigils (:$) are not part of the keys in the hash returned by the L</validate> method.  They are supported because they look "modern" and looking modern gives some people a warm, fuzzy feeling inside.
+The parameter name is defined without any leading sigil character ($@%).  However, the perl 6-ish naming style of preceding every positional value with a "$" and named parameters with ":$" is supported.  For the sake of brevity, a parameter name which begins with just a colon (e.g., "Int :named_param") is also considered a named parameter.  This is where similarity with perl 6 parameter signatures more or less begins and ends.  Params::Signature also supports setting default values; however, the full range of perl 6-style signature definitions is currently not supported.  Furthermore, any leading sigils (:$) are not part of the keys in the hash returned by the L<Params::Signature/validate> method.  They are supported because they look "modern" and looking modern gives some people a warm, fuzzy feeling inside.
 
 =cut
 
@@ -565,7 +616,7 @@ By default, a parameter is considered required.  The optional flag (a question m
 
 =head2 Indicator and Indicator Values
 
-A parameter can use one of 3 indicators.  The C<=> (equal sign) is used to assign a default value to a parameter.  The value may be a literal value or the value returned by a subroutine.  The C<<=> (back arrow) is used to assign the value of another "from" parameter to a parameter that is not set.  The "from" parameter must appear in the signature before it is used.  The C<<<> (double arrow) is used to define a parent field's dependents.
+A parameter can use one of 3 indicators.  The C<=> (equal sign) is used to assign a default value to a parameter.  The value may be a literal value or the value returned by a subroutine.  The C<< <= >> (back arrow) is used to assign the value of another "from" parameter to a parameter that is not set.  The "from" parameter must appear in the signature before it is used.  The C<< << >> (double arrow) is used to define a parent field's dependents.
 
 =head3 Default Value
 
@@ -603,15 +654,17 @@ A list of fields may be declared as being dependent on the presence of another o
 At times, a type constraint is not enough to validate a parameter.  Callbacks can be defined for each parameter.  Each callback must return a true value, otherwise, the parameter is rejected and the 'on_fail' subroutine is executed.  Exceptions are not caught if a callback calls 'die'.
 
     $params = validate(
-        \@_, 
-        signature => ["Int one"], 
-        param_style => positional_style,
-        callbacks => {
-            one => {
-                "is less than 2" => sub { $_[0] < 2 },
-                "is greater than 0" => sub { $_[0] > 0 }
+        \@_,
+        ["Int one"],
+        {
+            param_style => positional_style,
+            callbacks => {
+                one => {
+                    "is less than 2" => sub { $_[0] < 2 },
+                    "is greater than 0" => sub { $_[0] > 0 }
+                    }
                 }
-            }
+        }
         );
 
 Given the power of type constraints, this feature is somewhat redundant and mostly exists because this module started out life as a wrapper around Params::Validate, which it no longer uses.  Still, it may prove useful, so here it is.
@@ -623,24 +676,24 @@ Given the power of type constraints, this feature is somewhat redundant and most
 The 'C<named:>' pseudo-parameter is used to designate that all subsequent parameters in the signature must always appear as named parameters in calls to the subroutine.  Placing C<named:> as the first item in a signature indicates that all parameters must always be named, hence the subroutine always uses the "named" parameter style.  Making C<named:> the last item in the signature indicates that all preceding parameters are always positional, hence the "positional" style should always be used when calling the subroutine.  If C<named:> appears in the middle of a signature, it separates positional from named parameters.
 
     # positional only signature
-    ["Int one", "Int two", "named:"] 
+    ["Int one", "Int two", "named:"]
 
     # named only signature
-    ["named:", "Int one", "Int two"]  
+    ["named:", "Int one", "Int two"]
 
     # mixed signature:
     # 'one' is positional, 'two' is named only
-    ["Int one", "named:", "Int two"]  
+    ["Int one", "named:", "Int two"]
 
-The extra ('C<...>') pseudo-parameter is used to indicate that extra parameters are allowed.  Extra parameters are not validated, they are simply appended to the list returned by the L</validate> method.  If a signature ends with named parameters, then all extra parameters must also be named.  A 'best effort' attempt is made to ensure the extra parameters are named.  If a signature ends with positional parameters, all extra parameters are treated as positional as well. Extra positional parameters are assigned unique names in the hash returned by C<validate>.
+The extra ('C<...>') pseudo-parameter is used to indicate that extra parameters are allowed.  Extra parameters are not validated, they are simply appended to the list returned by the L<Params::Signature/validate> method.  If a signature ends with named parameters, then all extra parameters must also be named.  A 'best effort' attempt is made to ensure the extra parameters are named.  If a signature ends with positional parameters, all extra parameters are treated as positional as well. Extra positional parameters are assigned unique names in the hash returned by C<validate>.
 
-    my $param = $signature->(\@_, ["Int one", "Int two", "..."]);
+    my $param = $signature->validate(\@_, ["Int one", "Int two", "..."]);
 
 If a signature starts with a "...", all validation is disabled since all parameters are considered "extra parameters".
 
 The "optional:" pseudo-parameter is used to indicate that all subsequent parameters in the signature are optional.  It's a shorthand for specifying a "?" after every subsequent parameter name.
 
-    ["Int required_one", "optional:", "Int opt_two"]  
+    ["Int required_one", "optional:", "Int opt_two"]
 
 =cut
 
@@ -660,7 +713,7 @@ Coercion is enabled by default.  The coercion happens automatically inside of th
 
     sub mk_datetime
     {
-        my $params = validate(\@_, ["DateTime dt"])
+        my $params = validate(\@_, ["DateTime dt"]);
         return $params->{dt};
     }
 
@@ -703,25 +756,27 @@ Pick your poison.  Each module accomplishes the same thing, but in a different w
 
 Moo is supported indirectly because Params::Signature's methods accepts a type constraint that is the name of a CODE ref or a Moose::Meta::TypeConstraint-like object.  Moo expects a type constraint to be a CODE reference.  As another option, Type::Tiny can be used to declare type constraints that are objects (which makes Params::Signature happy) which overload C<&()> so that the object can be treated as a subroutine reference (which makes Moo happy).  So, if we all hold hands, Params::Signature, Type::Tiny and Moo will all be happy to work together.
 
-If using threads, it's recommended that your module or application define a singleton to use to validate parameters.  Using a separate object per thread should be safe, though this has not been tested. 
+If using threads, it's recommended that your module or application define a singleton to use to validate parameters.  Using a separate object per thread should be safe, though this has not been tested.
 
 The "fuzzy" logic may need to be improved to handle corner cases I did not think of.  It should be safe to use, provided its limitations are understood.
 
 There is no XS version of this module at this time.  It's pure perl.  Perhaps that's a feature rather than a limitation?  That said, performance improvements will be gladly accepted.
 
-This documentation might not be very clear, even though I know exactly what I meant to say at the time I tried to say it. 
+This documentation might not be very clear, even though I know exactly what I meant to say at the time I tried to say it.
 
 =cut
 
 =head1 AUTHOR
 
-Sandor Patocs, C<< <perl at patocspack.com> >>
+Sandor Patocs
+
+Please report issues via the GitHub issue tracker:
+L<https://github.com/spatocs/params_signature/issues>
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-params-signature at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Params-Signature>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
+Please report any bugs or feature requests on GitHub at
+L<https://github.com/spatocs/params_signature/issues>.
 
 
 =head1 SUPPORT
@@ -735,21 +790,13 @@ You can also look for information at:
 
 =over 4
 
-=item * RT: CPAN's request tracker (report bugs here)
+=item * GitHub: source repository and issue tracker
 
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Params-Signature>
+L<https://github.com/spatocs/params_signature>
 
-=item * AnnoCPAN: Annotated CPAN documentation
+=item * MetaCPAN
 
-L<http://annocpan.org/dist/Params-Signature>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/Params-Signature>
-
-=item * Search CPAN
-
-L<http://search.cpan.org/dist/Params-Signature/>
+L<https://metacpan.org/release/Params-Signature>
 
 =back
 
@@ -758,16 +805,128 @@ L<http://search.cpan.org/dist/Params-Signature/>
 
 Params::Validate, MooseX::Method::Signatures and Method::Signatures all served as inspiration for this module.
 
+=head1 MULTI DISPATCH
+
+Params::Signature::Multi provides signature-based subroutine dispatch.  You
+define multiple candidate subroutines, each with its own signature, and the
+multi dispatcher calls the first subroutine whose signature matches the
+arguments.
+
+A Params::Signature::Multi object holds a L<Params::Signature> validator that
+it uses to check each candidate signature against the arguments.  The
+validator can be replaced with C<< $multi->validator($new_validator) >> to
+customize parameter style, fuzzy mode, coercion, or any other validator
+option.
+
+=head2 Basic dispatch
+
+    use Params::Signature::Multi;
+
+    my $multi = Params::Signature::Multi->new();
+
+    sub process {
+        return $multi->dispatch(
+            \@_,
+            [
+                { signature => ['Int id', 'Str message', '...'],
+                  call      => \&_process_with_message },
+                { signature => ['Int id'],
+                  call      => \&_process_simple },
+                { signature => ['...'],
+                  call      => \&_process_fallback },
+            ],
+        );
+    }
+
+    sub _process_with_message   { my $p = shift; ... }
+    sub _process_simple          { my $p = shift; ... }
+    sub _process_fallback        { my $p = shift; ... }
+
+The signatures are tried in order.  The first signature whose types accept all
+arguments is selected and its C<call> subroutine is invoked.  Default values
+in the signatures are I<ignored> during dispatch -- only type constraints are
+checked.
+
+=head2 Resolving without calling
+
+C<resolve> finds the matching signature but does not call anyone.  It returns
+the index and optional C<id> of the matched signature, plus the validated
+parameters:
+
+    sub my_accessor {
+        my $self = shift;
+        my ($idx, $id, $validated) = $multi->resolve(
+            \@_,
+            [
+                { id => 'set', signature => ['Str key', 'Str value'] },
+                { id => 'get', signature => ['Str key'] },
+                { id => 'fallback', signature => ['...'] },
+            ],
+        );
+        if ($id eq 'set') {
+            return $self->{$validated->{key}} = $validated->{value};
+        }
+        elsif ($id eq 'get') {
+            return $self->{$validated->{key}};
+        }
+        else {
+            warn "my_accessor: unrecognised arguments";
+            return;
+        }
+    }
+
+=head2 Signature ordering
+
+Because the dispatcher stops at the first match, signatures should be ordered
+from most specific to least specific.  An C<Int> constraint is stricter than
+a C<Str> constraint, so signatures with C<Int> parameters should appear
+before signatures with C<Str> parameters that accept the same number of
+arguments:
+
+    $multi->dispatch(
+        \@_,
+        [
+            { signature => ['Int arg'],  call => \&_handle_int  },
+            { signature => ['Str arg'],  call => \&_handle_str  },
+            { signature => ['...'],      call => \&_fallback    },
+        ],
+    );
+
+=head2 Fallback signature
+
+A signature of C<['...']> matches anything and is commonly placed last so
+that unmatched arguments are always handled (even if only to produce an error
+message).
+
+=head2 Using named parameters with dispatch
+
+The parameter style can be set on the Multi object's validator or passed per
+signature via the C<config> hash:
+
+    my $multi = Params::Signature::Multi->new(param_style => 'named');
+
+    # or override per signature:
+    $multi->dispatch(
+        \@_,
+        [
+            { signature => ['Str name', 'Int age'],
+              config    => { param_style => 'named' },
+              call      => \&_handle_person },
+        ],
+    );
+
+For more details see L<Params::Signature::Multi>.
+
 =head1 SEE ALSO
 
-L<Params::Validate>, L<MooseX::Method::Signatures>, L<Method::Signatures>, L<Perl6::Signature>
+L<Params::Signature::Multi>, L<Params::Validate>, L<MooseX::Method::Signatures>, L<Method::Signatures>, L<Perl6::Signature>
 
 
 =head1 LICENSE AND COPYRIGHT
 
 Copyright 2013 Sandor Patocs.
 
-This program is distributed under the terms of the Artisitic License (2.0)
+This program is distributed under the terms of the Artistic License (2.0)
 
 
 =cut

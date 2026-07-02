@@ -1360,7 +1360,7 @@ The examples below do not cover more advanced scenarios which are covered in the
     my $params_hashref2 = validate(\@_, ["DoesIt doit", "HashRef2 a_hash"])
 
     # to magically coerce a hash into a Foo::Bar via validate()
-    coerce "Foo_Bar", from "HashRef", via { new Foo::Bar(%{$_[0]})});
+    coerce "Foo_Bar", from "HashRef", via { new Foo::Bar(%{$_[0]}) };
 
     # if bar is a HashRef in @_ it will be coerced by validate
     # into a Foo::Bar object in @params_array
@@ -1389,7 +1389,7 @@ The examples below do not cover more advanced scenarios which are covered in the
 
 In its simplest form, you call Params::Signature's validate method with your parameters and a signature specification:
 
-    $params = $signature->validate(\@_, ["Str x = 'default'", "Undef|Str y?]);
+    $params = $signature->validate(\@_, ["Str x = 'default'", "Undef|Str y?"]);
 
 The signature is a list of parameter definitions.  A basic parameter definition is a string which consists of a type constraint and the name of the parameter.  The actual type constraints are defined via an external module, such as L<Type::Tiny> or L<Moose::Util::TypeConstraints>.  Type constraints can also be implemented as subroutine references.  Parameters are required by default.  A default value may be assigned to a required parameter, but not an optional one.  Parameters may be flagged as optional using the optional flag (trailing question mark).
 
@@ -1517,7 +1517,7 @@ B<coerce>:  If a parameter value can be coerced into the type required in a sign
     # this will coerce the value for 'even' into an EvenInt first
     # then an EvenNum (assuming coercions for both types have
     # been registered)
-    @params = validate(\_@, ["EvenInt|EvenNum even"]);
+    @params = validate(\@_, ["EvenInt|EvenNum even"]);
 
 B<on_fail>:  Set the subroutine to call if an error is encountered.  Carp::confess is called by default.
 
@@ -1600,10 +1600,10 @@ Validate the parameters passed to a subroutine using a subroutine signature.
                         normalize_keys => sub { lc $_[0] },
                         fuzzy => hash_param_ok,
                         called => "YourModule",
-                        on_fail => \&catch_validation_error
+                        on_fail => \&catch_validation_error,
                         callbacks => {
                             one => {
-                                "equals one" => { $_[0] == 1}
+                                "equals one" => sub { $_[0] == 1 }
                                 }
                             },
                     }
@@ -1656,7 +1656,7 @@ In scalar context, the method returns a hash reference with key/value pairs for 
     {
         # get hash in scalar context (and use a perl 6-ish signature)
         my $params = $signature->validate(
-                        \_@,
+                        \@_,
                         ["Int $one", "Int $two = 2", "Int :$three", "..."]
                         );
         # $params = { one => 1, two => 2, three => 3, four => 4 }
@@ -1664,7 +1664,7 @@ In scalar context, the method returns a hash reference with key/value pairs for 
         # get a list in list context (signature happens to use
         # the "native" signature style)
         my @params = $signature->validate(
-                     \_@,
+                     \@_,
                      ["Int one", "Int two = 2", "named:", "Int three", "..."]
                      );
         # @params = [ 1, 2, 3, 4]
@@ -1675,14 +1675,14 @@ In scalar context, the method returns a hash reference with key/value pairs for 
     {
         # get hash in scalar context (and use a perl 6-ish signature)
         my $params = $signature->validate(
-                        \_@,
+                        \@_,
                         ["Int $one", "Int $two", "Int $three"]
                         );
         # $params = { one => 1, two => undef, three => 3}
 
         # get a list in list context 
         my @params = $signature->validate(
-                            \_@,
+                            \@_,
                             ["Int one", "Int two", "Int three"]
                             );
         # @params = [ 1, undef, 3 ]
@@ -1693,14 +1693,14 @@ In scalar context, the method returns a hash reference with key/value pairs for 
     {
         # get hash in scalar context (and use a perl 6-ish signature)
         my $params = $signature->validate(
-                        \_@,
+                        \@_,
                         ["Int one", "Int two", "..."]
                         );
         # $params = { one => 1, two => 2, p_2 => 3, p_3 => 4}
 
         # get a list in list context 
         my @params = $signature->validate(
-                            \_@,
+                            \@_,
                             ["Int one", "Int two", "..."]
                             );
         # @params = [ 1, 2, 3, 4 ]
@@ -1737,7 +1737,7 @@ B<Return Value>:
 
 In scalar context, returns 1 if the value matches at least one type in the type constraint or 0 otherwise.
 
-In list context, returns (passed, msg, tc) where passed is a 1 or 0, msg is an error message, if there is one, and tc is a reference to the matching type constraint.
+In list context, returns (passed, value, msg, tc) where passed is a 1 or 0, value is the tested value, msg is an error message (if there is one), and tc is a reference to the matching type constraint.
 
 
 =cut
@@ -1753,7 +1753,7 @@ Moo is supported indirectly because Params::Signature's methods expect a type co
 
 If using threads, it's recommended that your module or application define a singleton to use to validate parameters.  Using a separate object per thread should be safe, though this has not been tested. 
 
-When "fuzzy" is enabled, C<validate> attempts to automatically determine whether positional or named arguments were passed to the caller.  The current implementation requires that at least 2 or more required parameters exist in the signature.  Furthermore, it requires that the caller's argument list contain a single hash.  Using "fuzzy" to decipher what someone meant is powerful but potentially problematic.  That said, it should be safe to use.
+When "fuzzy" is enabled, C<validate> attempts to automatically determine whether positional or named arguments were passed to the caller.  This logic is heuristic and can be ambiguous when argument values happen to match parameter names.  C<fuzzy = 1> is strict and only treats a single hash reference as named input, while C<fuzzy = 2> is more permissive and may accept raw key/value pairs.  Using "fuzzy" to decipher intent is powerful but potentially problematic.
 
 The "fuzzy" logic may need to be improved to handle corner cases I did not think of.
 
@@ -1763,13 +1763,12 @@ There is no XS version of this module at this time.  It's pure perl.  Perhaps th
 
 =head1 AUTHOR
 
-Sandor Patocs, C<< <perl at patocspack.com> >>
+Sandor Patocs
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-params-signature at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Params-Signature>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
+Please report any bugs or feature requests on GitHub at
+L<https://github.com/spatocs/params_signature/issues>.
 
 
 =head1 SUPPORT
@@ -1783,21 +1782,13 @@ You can also look for information at:
 
 =over 4
 
-=item * RT: CPAN's request tracker (report bugs here)
+=item * GitHub: source repository and issue tracker
 
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Params-Signature>
+L<https://github.com/spatocs/params_signature>
 
-=item * AnnoCPAN: Annotated CPAN documentation
+=item * MetaCPAN
 
-L<http://annocpan.org/dist/Params-Signature>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/Params-Signature>
-
-=item * Search CPAN
-
-L<http://search.cpan.org/dist/Params-Signature/>
+L<https://metacpan.org/release/Params-Signature>
 
 =back
 
@@ -1815,7 +1806,7 @@ L<Params::Signature::Manual>, L<Params::Validate>, L<MooseX::Method::Signatures>
 
 Copyright 2013 Sandor Patocs.
 
-This program is distributed under the terms of the Artisitic License (2.0)
+This program is distributed under the terms of the Artistic License (2.0)
 
 
 =cut

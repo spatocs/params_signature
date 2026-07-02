@@ -399,7 +399,7 @@ In its simplest form, you simply call Params::Signature::Multi's L</dispatch> me
                         ],
 
                     param_style => "named",
-                    
+
                     on_fail => \&my_error_handler
                 );
 
@@ -437,7 +437,7 @@ Only resolve which signature actually matches the parameters passed to a subrout
 
 B<params>: A reference to an array of parameters passed to the calling subroutine, typically C<\@_>.  This array is left alone and may be used after the call to resolve.
 
-B<signatures>: A list of signatures in the order in which resolve will attempt to find a matching signature.  If signatures are similar, more specific signatures (those that have more parameters or stricter type constraints) should appear first, with the least specific signature at the end.  See the L<Limitations and Caveats> section below for additional considerations.
+B<signatures>: A list of signatures in the order in which resolve will attempt to find a matching signature.  If signatures are similar, more specific signatures (those that have more parameters or stricter type constraints) should appear first, with the least specific signature at the end.  See the L</"LIMITATIONS AND CAVEATS"> section below for additional considerations.
 
 =over 4
 
@@ -623,13 +623,12 @@ Using named, rather than positional, parameters can help eliminate some ambiguit
 
 =head1 AUTHOR
 
-Sandor Patocs, C<< <perl at patocspack.com> >>
+Sandor Patocs
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-params-signature-multi at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Params-Signature>.  
-I will be notified, and then you'll automatically be notified of progress on your bug as I make changes.
+Please report any bugs or feature requests on GitHub at
+L<https://github.com/spatocs/params_signature/issues>.
 
 
 =head1 SUPPORT
@@ -643,21 +642,13 @@ You can also look for information at:
 
 =over 4
 
-=item * RT: CPAN's request tracker (report bugs here)
+=item * GitHub: source repository and issue tracker
 
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Params-Signature>
+L<https://github.com/spatocs/params_signature>
 
-=item * AnnoCPAN: Annotated CPAN documentation
+=item * MetaCPAN
 
-L<http://annocpan.org/dist/Params-Signature>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/Params-Signature>
-
-=item * Search CPAN
-
-L<http://search.cpan.org/dist/Params-Signature/>
+L<https://metacpan.org/release/Params-Signature>
 
 =back
 

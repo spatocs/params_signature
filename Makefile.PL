@@ -5,7 +5,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile(
     NAME             => 'Params::Signature',
-    AUTHOR           => q{Sandor Patocs <perl@patocspack.com>},
+    AUTHOR           => q{Sandor Patocs},
     VERSION_FROM     => 'lib/Params/Signature.pm',
     ABSTRACT_FROM    => 'lib/Params/Signature.pm',
     LICENSE          => 'perl',
