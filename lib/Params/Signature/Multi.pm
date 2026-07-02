@@ -11,43 +11,43 @@ our $VERSION = '0.05';
 my $debug         = 0;
 my $class_default = undef;
 *class_default =
-sub { ($class_default) ? $class_default : ($class_default = new Params::Signature::Multi(on_fail => \&confess)) };
+  sub { ($class_default) ? $class_default : ($class_default = new Params::Signature::Multi(on_fail => \&confess)) };
 
 sub new
 {
-    my $class = shift;
-    my $self  = {};
+   my $class = shift;
+   my $self  = {};
 
-    bless $self, $class;
+   bless $self, $class;
 
-    # skip local validation since @_ is validated by Params::Signature::new()
-    $self->validator(new Params::Signature(@_));
+   # skip local validation since @_ is validated by Params::Signature::new()
+   $self->validator(new Params::Signature(@_));
 
-    return $self;
+   return $self;
 }
 
 # set custom Params::Signature object as validator
 # NOTE: this is NOT a class method
 sub validator
 {
-    # $self not set to $class_default so that people don't mess with "system defaults"
-    my $self = shift;
-    if (scalar @_)
-    {
-        $self->{validator} = shift;
-        if (ref($self->{validator}))
-        {
-            $self->{on_fail} = $self->{validator}->{on_fail};
-            $self->{validator}->{on_fail} = sub { $self->fail(@_) };
-        }
-    }
-    return $self->{validator};
+   # $self not set to $class_default so that people don't mess with "system defaults"
+   my $self = shift;
+   if (scalar @_)
+   {
+      $self->{validator} = shift;
+      if (ref($self->{validator}))
+      {
+         $self->{on_fail} = $self->{validator}->{on_fail};
+         $self->{validator}->{on_fail} = sub { $self->fail(@_) };
+      }
+   }
+   return $self->{validator};
 }
 
 sub validate
 {
-    my $self = (ref($_[0])) ? shift @_ : (shift @_ and class_default());
-    return $self->validator->validate(@_);
+   my $self = (ref($_[0])) ? shift @_ : (shift @_ and class_default());
+   return $self->validator->validate(@_);
 }
 
 # Parameters Needed:
@@ -91,47 +91,55 @@ sub validate
 #                   );
 sub dispatch
 {
-    my $self = (ref($_[0])) ? shift @_ : (shift @_ and class_default());
-    my $idx;
-    my $id;
-    my $on_fail;
-    my $validated;
-    my $caller;
-    my $args;
-    my $signatures;
-    my $cfg;
-    my %resolve_cfg;
+   my $self = (ref($_[0])) ? shift @_ : (shift @_ and class_default());
+   my $idx;
+   my $id;
+   my $on_fail;
+   my $validated;
+   my $caller;
+   my $args;
+   my $signatures;
+   my $cfg;
+   my %resolve_cfg;
 
-    if (ref($_[0]) ne "ARRAY") { $self->{on_fail}->("$self->{called} Invalid argument list: expected array reference"); return; }
-    if (ref($_[1]) ne "ARRAY") { $self->{on_fail}->("$self->{called} Invalid signature list: expected array reference, got " . ref($_[1])); return; }
-    if ($_[2] && ref($_[2]) ne "HASH") { $self->{on_fail}->("$self->{called} Invalid validation options: expected hash reference"); return; }
-    ($args, $signatures, $cfg) = ($_[0], $_[1], ($_[2] || {}));
+   if (ref($_[0]) ne "ARRAY") { $self->{on_fail}->("$self->{called} Invalid argument list: expected array reference"); return; }
+   if (ref($_[1]) ne "ARRAY")
+   {
+      $self->{on_fail}->("$self->{called} Invalid signature list: expected array reference, got " . ref($_[1]));
+      return;
+   }
+   if ($_[2] && ref($_[2]) ne "HASH")
+   {
+      $self->{on_fail}->("$self->{called} Invalid validation options: expected hash reference");
+      return;
+   }
+   ($args, $signatures, $cfg) = ($_[0], $_[1], ($_[2] || {}));
 
-    $on_fail = $cfg->{on_fail} || $self->{on_fail};
-    $caller = $cfg->{caller} || $self->{caller} || caller;
-    %resolve_cfg = %$cfg;
-    $resolve_cfg{caller} = $caller;
+   $on_fail             = $cfg->{on_fail} || $self->{on_fail};
+   $caller              = $cfg->{caller}  || $self->{caller} || caller;
+   %resolve_cfg         = %$cfg;
+   $resolve_cfg{caller} = $caller;
 
-    # TODO: may speed things up to have resolve() return validated
-    #       and coerced param values so that they can be forwarded to
-    #       sub, which will not need to coerce (or validate?) params
-    #       a second time ... want to avoid validating params 2x
-    ($idx, $id, $validated) = $self->resolve($args, $signatures, \%resolve_cfg);
-    if ($self->{ok})
-    {
+   # TODO: may speed things up to have resolve() return validated
+   #       and coerced param values so that they can be forwarded to
+   #       sub, which will not need to coerce (or validate?) params
+   #       a second time ... want to avoid validating params 2x
+   ($idx, $id, $validated) = $self->resolve($args, $signatures, \%resolve_cfg);
+   if ($self->{ok})
+   {
 
-        #print_debug("Resolved to: $idx, $id ...");
-        if (defined($signatures->[$idx]{call}))
-        {
-            #return $params->{signatures}->[$idx]{call}->(@{$params->{params}});
-            return $signatures->[$idx]{call}->($validated);
-        }
-        else
-        {
-            $on_fail->("No subroutine to call");
-        }
-    }
-    return;
+      #print_debug("Resolved to: $idx, $id ...");
+      if (defined($signatures->[$idx]{call}))
+      {
+         #return $params->{signatures}->[$idx]{call}->(@{$params->{params}});
+         return $signatures->[$idx]{call}->($validated);
+      }
+      else
+      {
+         $on_fail->("No subroutine to call");
+      }
+   }
+   return;
 }
 
 # in scalar context return id (if set) or index (if no id set)
@@ -163,90 +171,90 @@ sub dispatch
 #                   );
 sub resolve
 {
-    my $self = (ref($_[0])) ? shift @_ : (shift @_ and class_default());
-    my $i;
-    my $validated;
-    my $passed = -1;
-    my $id     = undef;
-    my $on_fail;
-    my $caller;
-    my $cfg;
-    my $v_cfg;
-    my %validate_cfg;
-    my $args;
-    my $signatures;
+   my $self = (ref($_[0])) ? shift @_ : (shift @_ and class_default());
+   my $i;
+   my $validated;
+   my $passed = -1;
+   my $id     = undef;
+   my $on_fail;
+   my $caller;
+   my $cfg;
+   my $v_cfg;
+   my %validate_cfg;
+   my $args;
+   my $signatures;
 
-    if (ref($_[0]) ne "ARRAY") { $self->{on_fail}->("$self->{called} Invalid argument list: expected array reference"); return; }
-    if (ref($_[1]) ne "ARRAY") { $self->{on_fail}->("$self->{called} Invalid signature list: expected array reference, got " . ref($_[1])); return; }
-    if ($_[2] && ref($_[2]) ne "HASH") { $self->{on_fail}->("$self->{called} Invalid validation options: expected hash reference"); return; }
-    ($args, $signatures, $cfg) = ($_[0], $_[1], ($_[2] || {}));
+   if (ref($_[0]) ne "ARRAY") { $self->{on_fail}->("$self->{called} Invalid argument list: expected array reference"); return; }
+   if (ref($_[1]) ne "ARRAY")
+   {
+      $self->{on_fail}->("$self->{called} Invalid signature list: expected array reference, got " . ref($_[1]));
+      return;
+   }
+   if ($_[2] && ref($_[2]) ne "HASH")
+   {
+      $self->{on_fail}->("$self->{called} Invalid validation options: expected hash reference");
+      return;
+   }
+   ($args, $signatures, $cfg) = ($_[0], $_[1], ($_[2] || {}));
 
-    $on_fail = $cfg->{on_fail} || $self->{on_fail};
-    $caller = $cfg->{caller} || $self->{caller} || caller;
+   $on_fail = $cfg->{on_fail} || $self->{on_fail};
+   $caller  = $cfg->{caller}  || $self->{caller} || caller;
 
-    for ($i = 0; $i < scalar @{$signatures}; $i++)
-    {
-        $self->{ok} = 1;
-        $self->{msg} = undef;
-        $v_cfg = ($signatures->[$i]->{config} || $cfg),
-        %validate_cfg = %$v_cfg;
-        $validate_cfg{caller} = $caller;
+   for ($i = 0; $i < scalar @{$signatures}; $i++)
+   {
+      $self->{ok}           = 1;
+      $self->{msg}          = undef;
+      $v_cfg                = ($signatures->[$i]->{config} || $cfg), %validate_cfg = %$v_cfg;
+      $validate_cfg{caller} = $caller;
 
-        #print_debug("Validate params:", Dumper(\%validate_params));
-        $validated = $self->{validator}->validate($args, 
-            $signatures->[$i]->{signature},
-            \%validate_cfg
-            );
+      #print_debug("Validate params:", Dumper(\%validate_params));
+      $validated = $self->{validator}->validate($args, $signatures->[$i]->{signature}, \%validate_cfg);
 
-        #print_debug("Validate result: (ok=1) " . $self->{ok});
+      #print_debug("Validate result: (ok=1) " . $self->{ok});
 
-        if ($self->{ok})
-        {
-            $passed = $i;
-            $id     = $signatures->[$i]->{id};
-            last;
-        }
-    }
+      if ($self->{ok})
+      {
+         $passed = $i;
+         $id     = $signatures->[$i]->{id};
+         last;
+      }
+   }
 
-    if (($passed < 0) && ($on_fail))
-    {
+   if (($passed < 0) && ($on_fail))
+   {
 
-        #print_debug("Call on_fail with: Failed to resolve subroutine using parameters and signatures");
-        $passed = -1;
-        $id = undef;
-        $validated = undef;
-        $on_fail->("Failed to resolve subroutine using parameters and signatures");
-        return (wantarray ? ($passed, $id, $validated) : ($id || $passed));
-    }
+      #print_debug("Call on_fail with: Failed to resolve subroutine using parameters and signatures");
+      $passed    = -1;
+      $id        = undef;
+      $validated = undef;
+      $on_fail->("Failed to resolve subroutine using parameters and signatures");
+      return (wantarray ? ($passed, $id, $validated) : ($id || $passed));
+   }
 
-    # list context: index and id are returned
-    # scalar context: id, if set, else index
-    return (wantarray ? ($passed, $id, $validated) : ($id || $passed));
+   # list context: index and id are returned
+   # scalar context: id, if set, else index
+   return (wantarray ? ($passed, $id, $validated) : ($id || $passed));
 }
 
 sub fail
 {
-    my $self = shift;
-    my $msg  = shift;
+   my $self = shift;
+   my $msg  = shift;
 
-    #print_debug("Dang it! $msg");
-    $self->{ok}  = 0;
-    $self->{msg} = $msg;
+   #print_debug("Dang it! $msg");
+   $self->{ok}  = 0;
+   $self->{msg} = $msg;
 }
 
 sub print_debug
 {
-    if ($debug)
-    {
-        print STDERR join("\n", @_, "\n");
-    }
+   if ($debug)
+   {
+      print STDERR join("\n", @_, "\n");
+   }
 }
 
-
-eval{
-    $class_default = 
-$class_default = new Params::Signature::Multi(on_fail => \&confess) ;
-};
+eval { $class_default = $class_default = new Params::Signature::Multi(on_fail => \&confess); };
 
 1;
 __END__

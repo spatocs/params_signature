@@ -45,8 +45,8 @@ my $NAMED               = "named";
 my $MIXED               = "mixed";
 my $DEFAULT_PARAM_STYLE = $POSITIONAL;
 sub positional_style { $POSITIONAL; }
-sub named_style { $NAMED; }
-sub mixed_style { $MIXED; }
+sub named_style      { $NAMED; }
+sub mixed_style      { $MIXED; }
 
 # values for fuzzy
 my $FUZZY_OFF     = 0;
@@ -77,14 +77,14 @@ my $class_default = undef;
 # singleton for use with class methods
 *class_default = sub {
    ($class_default) ? $class_default : (
-      $class_default = new Params::Signature(
-         param_style => $DEFAULT_PARAM_STYLE,
-         fuzzy       => $FUZZY_OFF,
-         coerce      => 1,
-         on_fail     => \&confess,
-         called      => "Params::Signature:"
-        )
-        );
+                                        $class_default = new Params::Signature(
+                                                                               param_style => $DEFAULT_PARAM_STYLE,
+                                                                               fuzzy       => $FUZZY_OFF,
+                                                                               coerce      => 1,
+                                                                               on_fail     => \&confess,
+                                                                               called      => "Params::Signature:"
+                                          )
+                                          );
 };
 
 my $new_validator = {
@@ -165,20 +165,20 @@ sub check
    my $self_ref = ref($_[0]);    # determine how sub was called (obj,class,sub?)
 
    my (
-      $type_spec,
-      $value,
-      @all_types,
-      $type_passed,
-      $type,
-      $tc,                       # type constraint
-      $coerce_tc,                # first type constraint that'll coerce the value
-      $tc_name,
-      $msg,
-      $cfg,
-      $caller,
-      $coerce,
-      %params,
-      );
+       $type_spec,
+       $value,
+       @all_types,
+       $type_passed,
+       $type,
+       $tc,           # type constraint
+       $coerce_tc,    # first type constraint that'll coerce the value
+       $tc_name,
+       $msg,
+       $cfg,
+       $caller,
+       $coerce,
+       %params,
+       );
 
    $self =
      ($self_ref && $self_ref ne "ARRAY" && $self_ref ne "HASH") ?
@@ -368,6 +368,7 @@ sub _build_signature_info
    foreach $arg (@{$_[0]})
    {
       $spec = {};
+
       # put whitespace around indicator (=, <=, <<)
       $arg =~ s/([\<\=]{1,2})/ $1 /;
       ($type, $name, $indicator, $indicator_value) =
@@ -409,7 +410,7 @@ sub _build_signature_info
 
       # perl6-ish variable name
       if (((index($name, ":\$") == 0) || (index($name, ":") == 0)) &&
-         (!exists($signature_info{positional_cutoff})))
+          (!exists($signature_info{positional_cutoff})))
       {
          $signature_info{positional_cutoff} = $idx;
       }
@@ -417,7 +418,7 @@ sub _build_signature_info
       # TODO: ambiguous names (no sigils) are not caught
       #       fields are assumed 'named' if any preceding field is named
       if ((index($name, "\$") == 0) &&
-         (exists($signature_info{positional_cutoff})))
+          (exists($signature_info{positional_cutoff})))
       {
          $ok  = 0;
          $msg = "Positional parameter $name cannot appear after a named parameter";
@@ -608,7 +609,7 @@ sub _build_signature_info
    $signature_info{signature_spec} = \@signature_spec;
 
    if (exists($signature_info{extra_cutoff}) &&
-      ($signature_info{extra_cutoff} != scalar @signature_spec))
+       ($signature_info{extra_cutoff} != scalar @signature_spec))
    {
       $ok  = 0;
       $msg = "Extra parameter indicator must be the last item in the signature";
@@ -681,9 +682,9 @@ sub validate_method
      shift @_ :
      (($_[0] eq "Params::Signature") ? (shift @_ and $class_default) : $class_default);
    my (
-      $caller_args,        $args,          $caller_signature, $signature,       $cfg,         $invocant,
-      $invocant_signature, $invocant_type, $invocant_name,    $invocant_passed, @result_list, $result_hash
-      );
+       $caller_args,        $args,          $caller_signature, $signature,       $cfg,         $invocant,
+       $invocant_signature, $invocant_type, $invocant_name,    $invocant_passed, @result_list, $result_hash
+       );
 
    # validate params
    # actual params to calling subroutine (\@_ in calling subroutine)
@@ -766,13 +767,14 @@ sub validate
      shift @_ :
      (($_[0] eq "Params::Signature") ? (shift @_ and $class_default) : $class_default);
    my (
-      $cache_key,      $signature_info, $on_fail,     $param_style,    $caller, $check_only, $coerce,
-      $ok,             $msg,            $called,      $arg_hash,       $max,    $idx,        $signature_spec,
-      $arg_count,      $field,          $type_passed, $tc,             $type,   $spec,       $value,
-      $fuzzy,          %name_lookup,    $key,         $normalize_keys, $args,   $signature,  $cfg,
-      @depends_fields, @extra_fields,   $extra_ok,    $name_regex,     $nr2,    $arg_hash_index,
-      %arg_hash_copy, $arg_hash_copy_set, $how_many
-      );
+       $cache_key,      $signature_info, $on_fail,   $param_style,    $caller,         $check_only,
+       $coerce,         $ok,             $msg,       $called,         $arg_hash,       $max,
+       $idx,            $signature_spec, $arg_count, $field,          $type_passed,    $tc,
+       $type,           $spec,           $value,     $fuzzy,          %name_lookup,    $key,
+       $normalize_keys, $args,           $signature, $cfg,            @depends_fields, @extra_fields,
+       $extra_ok,       $name_regex,     $nr2,       $arg_hash_index, %arg_hash_copy,  $arg_hash_copy_set,
+       $how_many
+       );
 
    # validate params
    if (ref($_[0]) ne "ARRAY") { $self->{on_fail}->("$self->{called} Invalid argument list: expected array reference"); return; }
@@ -822,8 +824,8 @@ sub validate
 
    $ok = 0;
    if ((($param_style eq $NAMED) || ($fuzzy == $FUZZY_HASH_OK && $param_style ne $NAMED)) &&
-      ($arg_count == 1) &&
-      ref($args->[$arg_hash_index]) eq "HASH")
+       ($arg_count == 1) &&
+       ref($args->[$arg_hash_index]) eq "HASH")
    {
       if ($normalize_keys)
       {
@@ -878,8 +880,8 @@ sub validate
                if (!$arg_hash_copy_set)
                {
                   $arg_hash_copy_set = 1;
-                  %arg_hash_copy = %{$args->[$arg_hash_index]};
-                  $arg_hash = \%arg_hash_copy;
+                  %arg_hash_copy     = %{$args->[$arg_hash_index]};
+                  $arg_hash          = \%arg_hash_copy;
                }
 
                $ok = 1;
@@ -1035,7 +1037,7 @@ sub validate
    if (($param_style eq $POSITIONAL) || ($param_style eq $MIXED))
    {
       if ($arg_count > $signature_info->{signature_param_count} &&
-         (!$extra_ok))
+          (!$extra_ok))
       {
          $how_many = $arg_count - $signature_info->{signature_param_count};
          if ($field)
@@ -1294,6 +1296,7 @@ EOC
    #print STDERR $sub;
 
    $s = eval "sub { $sub }";
+
    # if code in $sub is valid, eval should work
    #if ($@) { print STDERR "uh-oh=$@\n"; } # DEBUG
    return $s;
@@ -1318,12 +1321,12 @@ sub _change_class_default
 # must initialize $class_default once compilation completes
 eval {
    $class_default = Params::Signature->new(
-      param_style => $DEFAULT_PARAM_STYLE,
-      fuzzy       => $FUZZY_OFF,
-      coerce      => 1,
-      on_fail     => \&confess,
-      called      => "Params::Signature:"
-      );
+                                           param_style => $DEFAULT_PARAM_STYLE,
+                                           fuzzy       => $FUZZY_OFF,
+                                           coerce      => 1,
+                                           on_fail     => \&confess,
+                                           called      => "Params::Signature:"
+                                           );
 };
 1;
 __END__
