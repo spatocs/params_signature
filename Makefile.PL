@@ -20,7 +20,9 @@ WriteMakefile(
         # 'Carp' => "", # in core
         # 'Scalar::Util' => "1.23" # in core
         # 'Data::Dumper' => "2.0" # needed for debugging only
-        'Class::Inspector' => "1.28"
+        'Class::Inspector' => "1.28",
+        'Types::Standard' => 0,
+        'Test::Requires' => 0,
     },
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean => { FILES => 'Params-Signature-*' },
