@@ -605,7 +605,7 @@ Keep in mind that some type constraints are somewhat interchangable because of t
     int_or_str(123);   # resolves to "is_int"
     int_or_str("123"); # also resolves to "is_int"!
     int_or_str("hi"); # resolves to "is_str"
-    
+
 Using named, rather than positional, parameters can help eliminate some ambiguity, provided you use a different parameter name for the different types of values.  If, like in the example above, both signatures use the same name (arg_one), using named parameters doesn't have any advantage over positional parameters.  Changing the names to C<int_arg> and C<str_arg> and using named parameters clears things up:
 
     sub int_or_str
@@ -659,9 +659,6 @@ L<https://github.com/spatocs/params_signature>
 L<https://metacpan.org/release/Params-Signature>
 
 =back
-
-
-=head1 ACKNOWLEDGEMENTS
 
 
 =head1 SEE ALSO
