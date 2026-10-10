@@ -1380,7 +1380,7 @@ The examples below do not cover more advanced scenarios which are covered in the
     {
       # Note: the subroutine called to set the default value MUST be
       #       fully qualified (include the package name)
-      ($self, $one, $two) = validate_method(\@_, ["Object self", "Str one", "Int two = Something::set_two()"]);
+      ($self, $one, $two) = Params::Signature->validate_method(\@_, ["Object self", "Str one", "Int two = Something::set_two()"]);
       return ($one, $two);
     }
     sub set_two
