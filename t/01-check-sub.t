@@ -2,7 +2,7 @@
 use 5.006;
 use strict;
 use Test::More;
-use Test::Requires { Moose => 2.00 };
+use Test::Requires {Moose => 2.00};
 require FileHandle;
 my $fh = new FileHandle;
 use Params::Signature;
@@ -11,51 +11,48 @@ my $signature = new Params::Signature(on_fail => sub { });
 no warnings;
 
 # type constraints implemented as sub's (should work with Moo)
-our $ArrayRef = sub
-{
-    die("Value is not an array") unless (ref($_[0]) eq "ARRAY");
+our $ArrayRef = sub {
+   die("Value is not an array") unless (ref($_[0]) eq "ARRAY");
 };
 
-our $Bool = sub
-{
-    die ("Not a boolean") unless (!defined $_[0] or $_[0] eq q() or $_[0] eq '0' or $_[0] eq '1');
+our $Bool = sub {
+   die("Not a boolean") unless (!defined $_[0] or $_[0] eq q() or $_[0] eq '0' or $_[0] eq '1');
 };
 
-our $CodeRef = sub
-{
-    die ("Not a code ref") unless (ref($_[0]) eq "CODE");
+our $CodeRef = sub {
+   die("Not a code ref") unless (ref($_[0]) eq "CODE");
 };
 
-our $HashRef = sub
-{
-    die ("Not a hash") unless (ref($_[0]) eq "HASH")
+our $HashRef = sub {
+   die("Not a hash") unless (ref($_[0]) eq "HASH");
 };
-
 
 # some vars below used 1x, so suppress warning
 my @type_tests = (
-    ["ArrayRef" => {value => [0, 1], ok => 1}],
-    ["ArrayRef" => {value => {},             ok => 0}],
-    #["ArrayRef" => {value => new FileHandle, ok => 0}],
-    ["ArrayRef" => {value => $fh, ok => 0}],
-    ["ArrayRef" => {value => *STDERR,        ok => 0}],
+   ["ArrayRef" => {value => [0, 1], ok => 1}],
+   ["ArrayRef" => {value => {},     ok => 0}],
 
-    ["Bool" => {value => "0",      ok => 1}],
-    ["Bool" => {value => "123.45", ok => 0}],
-    ["Bool" => {value => "1",      ok => 1}],
-    ["Bool" => {value => "hi",     ok => 0}],
-    ["Bool" => {value => "",       ok => 1}],
-    ["Bool" => {value => undef,    ok => 1}],
+   #["ArrayRef" => {value => new FileHandle, ok => 0}],
+   ["ArrayRef" => {value => $fh,     ok => 0}],
+   ["ArrayRef" => {value => *STDERR, ok => 0}],
 
-    ["CodeRef" => {value => "hi", ok => 0}],
-    ["CodeRef" => {value => sub { 1 }, ok => 1}],
+   ["Bool" => {value => "0",      ok => 1}],
+   ["Bool" => {value => "123.45", ok => 0}],
+   ["Bool" => {value => "1",      ok => 1}],
+   ["Bool" => {value => "hi",     ok => 0}],
+   ["Bool" => {value => "",       ok => 1}],
+   ["Bool" => {value => undef,    ok => 1}],
 
-    ["HashRef" => {value => [0, 1], ok => 0}],
-    #["HashRef" => {value => new FileHandle, ok => 0}],
-    ["HashRef" => {value => $fh, ok => 0}],
-    ["HashRef" => {value => {},             ok => 1}],
+   ["CodeRef" => {value => "hi",      ok => 0}],
+   ["CodeRef" => {value => sub { 1 }, ok => 1}],
 
-    );
+   ["HashRef" => {value => [0, 1], ok => 0}],
+
+   #["HashRef" => {value => new FileHandle, ok => 0}],
+   ["HashRef" => {value => $fh, ok => 0}],
+   ["HashRef" => {value => {},  ok => 1}],
+
+   );
 
 use warnings;
 
@@ -63,27 +60,27 @@ plan tests => scalar @type_tests;
 
 Main:
 {
-    my $type_name;
-    my $type_test;
-    my $test_arg;
-    my $answer;
-    my $msg;
-    my $tc;
+   my $type_name;
+   my $type_test;
+   my $test_arg;
+   my $answer;
+   my $msg;
+   my $tc;
 
-    diag("Perform type check tests, Perl $], $^X");
+   diag("Perform type check tests, Perl $], $^X");
 
-    foreach $type_test (@type_tests)
-    {
-        $type_name = $type_test->[0];
-        $test_arg  = $type_test->[1];
-        ($answer, $msg, $tc) = $signature->check($type_name, $test_arg->{value});
+   foreach $type_test (@type_tests)
+   {
+      $type_name = $type_test->[0];
+      $test_arg  = $type_test->[1];
+      ($answer, $msg, $tc) = $signature->check($type_name, $test_arg->{value});
 
-        # some tests use undef as a value, so turn off warnings
-        no warnings;
-        ok($answer == $test_arg->{ok}, "$type_name: check '$test_arg->{value}', $msg, $tc");
-    }
+      # some tests use undef as a value, so turn off warnings
+      no warnings;
+      ok($answer == $test_arg->{ok}, "$type_name: check '$test_arg->{value}', $msg, $tc");
+   }
 
-};
+}
 __END__
 
 
